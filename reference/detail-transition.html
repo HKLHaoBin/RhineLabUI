@@ -24,7 +24,10 @@ if(params.has('reduced'))scene.setReduced(true);
 if(!params.has('idle'))scene.setMode('detail');
 if(params.has('exit')){
   for(let i=0;i<300;i++)step();
+  scene.rotation=scene.targetRotation=Number(params.get('angle')??0);
+  step();
   scene.setMode('archive');
+  if(params.has('swap'))scene.select(25);
 }
 const samples=[];
 const seconds=Number(params.get('t')??1);
@@ -41,7 +44,7 @@ for(let i=0;i<Math.round(seconds*60);i++){
     modelY:scene.model.position.y,
   });
 }
-if(params.has('angle')){
+if(params.has('angle')&&!params.has('exit')){
   scene.rotation=scene.targetRotation=Number(params.get('angle'));
   step();
 }
@@ -50,11 +53,29 @@ if(params.has('sharp')){
   scene.renderer.setPixelRatio(1);
   scene.composer.setPixelRatio(1);
 }
+if(params.has('close')){
+  const box=document.querySelector('#scene');
+  box.style.width='1100px';box.style.height='800px';
+  scene.renderer.setSize(1100,800);
+  scene.composer.setSize(1100,800);
+  scene.camera.setViewOffset(1920,1080,0,180,1100,800);
+}
+if(params.has('noao'))scene.ao.enabled=false;
+if(params.has('noshadow'))scene.renderer.shadowMap.enabled=false;
+if(params.has('offset')){
+  for(const mesh of scene.model.children){
+    if(mesh.userData.surface==='Amber_Lightguide'){
+      mesh.material.polygonOffset=params.get('offset')!=='0';
+      mesh.material.polygonOffsetFactor=-1;
+      mesh.material.polygonOffsetUnits=-2;
+    }
+  }
+}
 render();
 const maxFog=Math.max(...samples.map(s=>s.actualFog));
 const rangeError=Math.max(...samples.map(s=>s.rangeError));
 const passed=maxFog<0.08&&rangeError<1e-8&&(!params.has('reduced')||scene.idleGain<0.001);
-document.querySelector('#result').textContent=JSON.stringify({passed,phase:params.has('idle')?'idle':params.has('exit')?'exit':'entry',seconds,maxFog,previousMaxFog:Math.max(...samples.map(s=>s.previousFog)),rangeError,idleRange:Math.max(...samples.map(s=>s.modelY))-Math.min(...samples.map(s=>s.modelY)),stats:scene.getStats()},null,2);
+document.querySelector('#result').textContent=JSON.stringify({passed,phase:params.has('idle')?'idle':params.has('exit')?'exit':'entry',seconds,maxFog,previousMaxFog:Math.max(...samples.map(s=>s.previousFog)),rangeError,idleRange:Math.max(...samples.map(s=>s.modelY))-Math.min(...samples.map(s=>s.modelY)),materialOffsets:[scene.model,...scene.outgoing.map(o=>o.group)].map(g=>{const m=g.children.find(m=>m.userData.surface==='Amber_Lightguide').material;return [m.polygonOffset,m.polygonOffsetFactor,m.polygonOffsetUnits]}),stats:scene.getStats()},null,2);
 if(!passed)throw new Error('Camera-relative fog regression');
 </script>
 </html>

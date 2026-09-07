@@ -242,6 +242,14 @@ export class ArchiveScene {
         mat.roughness = 0.26;
         mat.metalness = 0.08;
       }
+      if (name === "Amber_Lightguide") {
+        // The guide sits only 0.002 ahead of the cover. At the long camera
+        // distance that gap can quantize to one depth value at oblique angles.
+        // Bias this narrow overlay only; retain the camera and global AO depth.
+        mat.polygonOffset = true;
+        mat.polygonOffsetFactor = -1;
+        mat.polygonOffsetUnits = -2;
+      }
       if (name === "Carbon_Ink") continue;
       const selectedMesh = new THREE.Mesh(geom, mat);
       selectedMesh.userData.surface = name;
