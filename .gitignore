@@ -1,0 +1,10 @@
+node_modules/
+backups/
+dist/
+.tools/
+*.mp4
+*.blend1
+optix7cache.db
+reference/*.jpg
+reference/**/*.jpg
+art/.cache/
