@@ -33,6 +33,9 @@ export class ModelViewer {
   private request = 0;
   private reduced = false;
   private loading = false;
+  private closing = false;
+  private transitions: Animation[] = [];
+  private transitionId = 0;
   private status = "";
   private opener: HTMLElement | null = null;
   private siblings: { node: HTMLElement; inert: boolean }[] = [];
@@ -98,6 +101,7 @@ export class ModelViewer {
     this.controls.enabled = false;
     this.controls.update();
     this.root.addEventListener("click", (event) => {
+      if (this.closing) return;
       const action = (event.target as HTMLElement).closest<HTMLElement>(
         "[data-viewer]",
       )?.dataset.viewer;
@@ -119,6 +123,7 @@ export class ModelViewer {
   ) {
     if (this.isOpen) return;
     this.isOpen = true;
+    this.closing = false;
     this.reduced = reduced;
     this.provider = provider;
     this.opener = document.activeElement as HTMLElement | null;
@@ -130,6 +135,7 @@ export class ModelViewer {
       .map((node) => ({ node, inert: node.inert }));
     this.siblings.forEach(({ node }) => (node.inert = true));
     this.root.hidden = false;
+    this.root.dataset.transition = "opening";
     this.root.querySelector("#viewer-title")!.textContent = title;
     this.root.querySelector("#viewer-file")!.textContent =
       "FILE " + id + " / INTERNAL DATABASE";
@@ -140,6 +146,7 @@ export class ModelViewer {
     this.resetView();
     this.resize();
     this.renderer.domElement.focus({ preventScroll: true });
+    this.enter();
     void this.load();
   }
 
@@ -155,7 +162,7 @@ export class ModelViewer {
     this.setButtonsDisabled(true);
     try {
       const source = await this.provider();
-      if (!this.isOpen || ticket !== this.request) {
+      if (!this.isOpen || this.closing || ticket !== this.request) {
         source.dispose();
         return;
       }
@@ -178,8 +185,20 @@ export class ModelViewer {
       this.setButtonsDisabled(false);
       this.setExploded(false);
       this.setStatus("已组装");
+      // Render before revealing the canvas so a new model never flashes in.
+      this.update(this.lastTime);
+      if (!this.reduced)
+        this.transitions.push(
+          this.canvasHost.animate(
+            [
+              { opacity: 0, transform: "scale(0.97)" },
+              { opacity: 1, transform: "scale(1)" },
+            ],
+            { duration: 380, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+          ),
+        );
     } catch (error) {
-      if (!this.isOpen || ticket !== this.request) return;
+      if (!this.isOpen || this.closing || ticket !== this.request) return;
       this.loading = false;
       loading.querySelector("span")!.textContent = "模型载入失败，请重试";
       loading.querySelector<HTMLElement>("button")!.hidden = false;
@@ -187,19 +206,106 @@ export class ModelViewer {
     }
   }
 
+  private enter() {
+    const ticket = ++this.transitionId;
+    this.transitions.forEach((animation) => animation.cancel());
+    this.transitions = [];
+    if (this.reduced) {
+      this.root.dataset.transition = "open";
+      return;
+    }
+    const fade = this.root.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 320,
+      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    });
+    this.transitions.push(fade);
+    for (const selector of [
+      ".viewer-header",
+      ".viewer-footer",
+      ".viewer-state",
+    ]) {
+      const element = this.root.querySelector<HTMLElement>(selector)!;
+      this.transitions.push(
+        element.animate(
+          [
+            { opacity: 0, translate: "0 10px" },
+            { opacity: 1, translate: "0 0" },
+          ],
+          {
+            duration: 300,
+            delay: 60,
+            fill: "backwards",
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          },
+        ),
+      );
+    }
+    void fade.finished
+      .then(() => {
+        if (ticket === this.transitionId) this.root.dataset.transition = "open";
+      })
+      .catch(() => {});
+  }
+
   close() {
-    if (!this.isOpen) return;
-    this.isOpen = false;
+    if (!this.isOpen || this.closing) return;
+    this.closing = true;
     this.request++;
     this.loading = false;
     this.controls.enabled = false;
+    this.setButtonsDisabled(true);
+    const ticket = ++this.transitionId;
+    // Capture the current fade when Escape interrupts opening.
+    const opacity = getComputedStyle(this.root).opacity;
+    const canvasStyle = getComputedStyle(this.canvasHost);
+    const canvasOpacity = canvasStyle.opacity;
+    const transform = canvasStyle.transform;
+    this.transitions.forEach((animation) => animation.cancel());
+    this.transitions = [];
+    this.root.dataset.transition = "closing";
+    if (this.reduced) {
+      this.finishClose();
+      return;
+    }
+    const fade = this.root.animate([{ opacity }, { opacity: 0 }], {
+      duration: 220,
+      easing: "cubic-bezier(0.4, 0, 1, 1)",
+      fill: "forwards",
+    });
+    this.transitions.push(
+      fade,
+      this.canvasHost.animate(
+        [
+          { transform, opacity: canvasOpacity },
+          { transform: "scale(0.97)", opacity: 0 },
+        ],
+        {
+          duration: 220,
+          easing: "cubic-bezier(0.4, 0, 1, 1)",
+          fill: "forwards",
+        },
+      ),
+    );
+    void fade.finished
+      .then(() => {
+        if (ticket === this.transitionId) this.finishClose();
+      })
+      .catch(() => {});
+  }
+
+  private finishClose() {
+    // Keep rendering and retain modal focus until the visible exit completes.
+    this.isOpen = false;
+    this.closing = false;
+    this.root.hidden = true;
+    this.transitions.forEach((animation) => animation.cancel());
+    this.transitions = [];
     if (this.source) {
       this.scene.remove(this.source.model);
       this.source.dispose();
       this.source = undefined;
     }
     this.groups.clear();
-    this.root.hidden = true;
     this.siblings.forEach(({ node, inert }) => (node.inert = inert));
     this.siblings = [];
     this.opener?.focus({ preventScroll: true });
@@ -250,6 +356,10 @@ export class ModelViewer {
     if (event.key === "Escape") {
       event.preventDefault();
       this.close();
+      return;
+    }
+    if (this.closing) {
+      event.preventDefault();
       return;
     }
     if (event.key === "Tab") {

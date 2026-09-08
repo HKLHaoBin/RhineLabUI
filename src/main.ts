@@ -3,6 +3,7 @@ import "./style.css";
 import { createRollingNumber } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
+import { ScrubTitle } from "./scrub-title";
 import { wrap, type ArchiveNavigation } from "./archive-loop";
 import {
   records,
@@ -122,6 +123,7 @@ const codeOptions = {
   format: { minimumIntegerDigits: 3, useGrouping: false },
   value: 1,
 };
+const selectionTitle = new ScrubTitle($("#selected-title"));
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
@@ -141,6 +143,7 @@ function savePrefs() {
     localStorage.setItem("rhine-settings", JSON.stringify(prefs));
   } catch {}
   audio.enabled = prefs.sound;
+  if (prefs.reduced) selectionTitle.reset();
   scene?.setReduced(prefs.reduced);
   scene?.setQuality(prefs.quality);
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
@@ -166,6 +169,7 @@ $("#file-ticks").innerHTML = records
   .join("");
 
 function setMode(next: Mode) {
+  if (next !== "archive") selectionTitle.reset();
   if (next === "detail" && mode !== "detail") recordAccess();
   mode = next;
   $("#stage").dataset.mode = next;
@@ -210,7 +214,7 @@ function updateSelection(navigation?: ArchiveNavigation) {
   const r = records[selected];
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
-  $("#selected-title").textContent = r.title;
+  selectionTitle.update(r.title, !prefs.reduced && mode === "archive");
   $("#selected-clearance").textContent = r.clearance;
   $("#archive-category").textContent = r.category;
   const direction =
