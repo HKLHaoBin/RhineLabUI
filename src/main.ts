@@ -105,12 +105,34 @@ function readLocal<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
+type Prefs = {
+  sfx: boolean;
+  music: boolean;
+  sfxVolume: number;
+  musicVolume: number;
+  reduced: boolean;
+  quality: boolean;
+};
+function clamp01(value: number) {
+  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+}
+function loadPrefs(): Prefs {
+  const raw = readLocal<Record<string, unknown>>("rhine-settings", {});
+  const legacyOn = raw.sound !== false;
+  return {
+    sfx: typeof raw.sfx === "boolean" ? raw.sfx : legacyOn,
+    music: typeof raw.music === "boolean" ? raw.music : legacyOn,
+    sfxVolume: clamp01(typeof raw.sfxVolume === "number" ? raw.sfxVolume : 1),
+    musicVolume: clamp01(typeof raw.musicVolume === "number" ? raw.musicVolume : 1),
+    reduced:
+      typeof raw.reduced === "boolean"
+        ? raw.reduced
+        : matchMedia("(prefers-reduced-motion: reduce)").matches,
+    quality: typeof raw.quality === "boolean" ? raw.quality : true,
+  };
+}
 const saved = new Set<string>(readLocal<string[]>("rhine-saved", []));
-const prefs = readLocal("rhine-settings", {
-  sound: true,
-  reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
-  quality: true,
-});
+const prefs = loadPrefs();
 const numberOptions = {
   locales: "en-US",
   format: { minimumIntegerDigits: 2, useGrouping: false },
@@ -135,7 +157,10 @@ const selectionTitle = new ScrubTitle($("#selected-title"));
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
-audio.enabled = prefs.sound;
+audio.apply(prefs);
+const unlockAudio = () => audio.prime();
+window.addEventListener("pointerdown", unlockAudio);
+window.addEventListener("keydown", unlockAudio);
 let scene: ArchiveScene;
 let viewer: ModelViewer | undefined;
 const accessLog: { id: string; time: string }[] = [];
@@ -150,7 +175,7 @@ function savePrefs() {
   try {
     localStorage.setItem("rhine-settings", JSON.stringify(prefs));
   } catch {}
-  audio.enabled = prefs.sound;
+  audio.apply(prefs);
   if (prefs.reduced) selectionTitle.reset();
   scene?.setReduced(prefs.reduced);
   scene?.setQuality(prefs.quality);
@@ -400,19 +425,30 @@ function renderResults() {
     `${String(results.length).padStart(2, "0")} RECORDS FOUND`;
 }
 function settingsMarkup() {
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><label><div><strong>INTERFACE SOUND</strong><span>界面反馈音</span></div><input type="checkbox" data-pref="sound" ${prefs.sound ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>HIGH QUALITY RENDERING</strong><span>环境遮蔽与高分辨率渲染</span></div><input type="checkbox" data-pref="quality" ${prefs.quality ? "checked" : ""}/><i class="toggle"></i></label></div><div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${publicUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
+  const sfxVol = Math.round(prefs.sfxVolume * 100);
+  const musicVol = Math.round(prefs.musicVolume * 100);
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><div class="settings-row settings-audio"><div><strong>INTERFACE TICKS</strong><span>点击与操作提示音</span></div><div class="settings-audio-controls"><input type="range" min="0" max="100" step="1" data-vol="sfxVolume" value="${sfxVol}" aria-label="点击音效音量"/><label class="settings-toggle-wrap"><input type="checkbox" data-pref="sfx" ${prefs.sfx ? "checked" : ""} aria-label="点击音效"/><i class="toggle"></i></label></div></div><div class="settings-row settings-audio"><div><strong>BACKGROUND PAD</strong><span>环境正弦铺垫，循环无接缝</span></div><div class="settings-audio-controls"><input type="range" min="0" max="100" step="1" data-vol="musicVolume" value="${musicVol}" aria-label="背景音乐音量"/><label class="settings-toggle-wrap"><input type="checkbox" data-pref="music" ${prefs.music ? "checked" : ""} aria-label="背景音乐"/><i class="toggle"></i></label></div></div><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>HIGH QUALITY RENDERING</strong><span>环境遮蔽与高分辨率渲染</span></div><input type="checkbox" data-pref="quality" ${prefs.quality ? "checked" : ""}/><i class="toggle"></i></label></div><div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${publicUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
+function applyVolumeInput(el: HTMLInputElement) {
+  const key = el.dataset.vol;
+  if (key !== "sfxVolume" && key !== "musicVolume") return;
+  prefs[key] = clamp01(Number(el.value) / 100);
+  savePrefs();
+}
 document.addEventListener("input", (e) => {
-  if ((e.target as HTMLElement).id === "archive-search") {
-    searchQuery = (e.target as HTMLInputElement).value;
+  const el = e.target as HTMLInputElement;
+  if (el.id === "archive-search") {
+    searchQuery = el.value;
     renderResults();
   }
+  if (el.dataset.vol) applyVolumeInput(el);
 });
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
-  if (el.dataset.pref) {
-    prefs[el.dataset.pref as keyof typeof prefs] = el.checked;
+  const key = el.dataset.pref;
+  if (key === "sfx" || key === "music" || key === "reduced" || key === "quality") {
+    prefs[key] = el.checked;
     savePrefs();
     audio.play("confirm");
   }
