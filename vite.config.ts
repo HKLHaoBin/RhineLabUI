@@ -16,7 +16,12 @@ function prefixPublicAssetUrls(base: string): Plugin {
       if (base === "/") return;
       const file = id.split("?")[0].replaceAll("\\", "/");
       if (!file.endsWith("/src/style.css")) return;
-      return code.replaceAll('url("/', `url("${base}`);
+      const doubled = `url("${base}${base.slice(1)}`;
+      const single = `url("${base}`;
+      let next = code;
+      while (next.includes(doubled)) next = next.replaceAll(doubled, single);
+      next = next.replaceAll('url("/fonts/', `url("${base}fonts/`);
+      return next === code ? undefined : next;
     },
   };
 }
