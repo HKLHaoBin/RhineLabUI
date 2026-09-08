@@ -1,5 +1,6 @@
 import "./style.css";
 import { ArchiveScene } from "./scene";
+import { ModelViewer } from "./model-viewer";
 import {
   records,
   categories,
@@ -44,7 +45,7 @@ $("#stage").innerHTML = `
   </section>
   <section id="detail-ui" class="detail-ui" aria-label="档案内容" hidden>
     <button class="back-button" data-action="back">← <span>ARCHIVE OVERVIEW</span><small>ESC</small></button>
-    <div class="object-caption"><span id="object-id">NO.001</span><div>INTERNAL DATABASE</div><small>DRAG TO INSPECT <span>↔</span></small></div>
+    <div class="object-caption"><span id="object-id">NO.001</span><div>INTERNAL DATABASE</div><small>DRAG TO INSPECT <span>↔</span></small><button class="viewer-open" data-action="model-viewer">360° 查看文档模型 <span>↗</span></button></div>
     <article id="detail-content" class="detail-content"></article>
   </section>
   <div class="powered">POWERED BY <b>RHINE LAB</b><i></i></div>
@@ -101,6 +102,7 @@ const prefs = readLocal("rhine-settings", {
 const audio = new TerminalAudio();
 audio.enabled = prefs.sound;
 let scene: ArchiveScene;
+let viewer: ModelViewer | undefined;
 const accessLog: { id: string; time: string }[] = [];
 const columnMemory = archiveColumns.map((_, lane) => columnFiles(lane)[0]);
 function recordAccess() {
@@ -123,6 +125,7 @@ function fit() {
   $("#stage").style.transform = `translate(-50%, -50%) scale(${scale})`;
   $("#viewport").style.setProperty("--scale", String(scale));
   scene?.resize();
+  viewer?.resize();
 }
 window.addEventListener("resize", fit);
 fit();
@@ -393,6 +396,18 @@ document.addEventListener("click", (e) => {
   if (action === "column-prev") stepColumn(-1);
   if (action === "column-next") stepColumn(1);
   if (action === "open") openFile();
+  if (action === "model-viewer" && mode === "detail") {
+    viewer ??= new ModelViewer($("#stage"), scene.scene.environment, () =>
+      audio.play("back"),
+    );
+    viewer.open(
+      records[selected].id,
+      records[selected].title,
+      () => scene.createAssemblyModel(),
+      prefs.reduced,
+    );
+    audio.play("open");
+  }
   if (action === "back") {
     setMode("archive");
     audio.play("back");
@@ -426,6 +441,7 @@ document.addEventListener("click", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  if (viewer?.isOpen) return;
   const typing = e.target instanceof HTMLInputElement;
   if (e.key === "Escape") {
     if (modal) closeModal();
@@ -589,7 +605,8 @@ function frame(ms: number) {
     mode === "boot" && ready
       ? bootFrame(frozenTime ?? time - bootStart)
       : undefined;
-  scene?.update(time, cinema);
+  if (!viewer?.isOpen) scene?.update(time, cinema);
+  viewer?.update(time);
   if (scene && mode === "detail") {
     $("#detail-content").style.opacity = String(scene.detailVisibility);
     $("#detail-content").style.transform =

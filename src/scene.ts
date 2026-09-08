@@ -336,6 +336,70 @@ export class ArchiveScene {
     this.model.position.copy(this.positions[this.selectedSlot]);
     this.loaded = true;
   }
+
+  private assemblyTemplate?: Promise<THREE.Group>;
+  async createAssemblyModel() {
+    this.assemblyTemplate ??= new GLTFLoader()
+      .loadAsync("/assets/archive-assembly.glb")
+      .then((gltf) => {
+        gltf.scene.updateMatrixWorld(true);
+        return gltf.scene;
+      })
+      .catch((error) => {
+        this.assemblyTemplate = undefined;
+        throw error;
+      });
+    const template = await this.assemblyTemplate;
+    const model = new THREE.Group();
+    const meshes: THREE.Mesh[] = [];
+    template.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const name = (object.material as THREE.Material).name.replace(
+        /\.\d+$/,
+        "",
+      );
+      const mesh = new THREE.Mesh(
+        object.geometry.clone().applyMatrix4(object.matrixWorld),
+        object.material,
+      );
+      mesh.userData.surface = name;
+      mesh.userData.assemblyPart = object.userData.assemblyPart;
+      model.add(mesh);
+      meshes.push(mesh);
+    });
+    this.appearance.prepare(model);
+    this.appearance.apply(model, 1);
+    const canvas = document.createElement("canvas");
+    canvas.width = this.labelCanvas.width;
+    canvas.height = this.labelCanvas.height;
+    canvas.getContext("2d")!.drawImage(this.labelCanvas, 0, 0);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.99, 0.46),
+      new THREE.MeshBasicMaterial({
+        map: texture,
+        toneMapped: false,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+    label.position.set(-1.36, 3.04, 0.255);
+    label.userData.assemblyPart = "cover";
+    model.add(label);
+    meshes.push(label);
+    return {
+      model,
+      dispose: () => {
+        for (const mesh of meshes) {
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
+        }
+        texture.dispose();
+      },
+    };
+  }
   setMode(mode: "hidden" | "archive" | "detail") {
     this.lastInteraction = this.clock;
     this.targetReveal = mode === "hidden" ? 0 : 1;
