@@ -1,6 +1,7 @@
 import "./style.css";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
+import { wrap, type ArchiveNavigation } from "./archive-loop";
 import {
   records,
   categories,
@@ -155,12 +156,12 @@ function setMode(next: Mode) {
   }
   if (next === "detail") renderDetail();
 }
-function select(index: number) {
+function select(index: number, navigation?: ArchiveNavigation) {
   selected = (index + records.length) % records.length;
   columnMemory[fileLocation(selected).lane] = selected;
   if (mode === "detail") setMode("archive");
   activeTab = "overview";
-  scene?.select(selected);
+  scene?.select(selected, navigation);
   updateSelection();
   audio.play("tick");
 }
@@ -169,15 +170,13 @@ function stepFile(direction: number) {
   if (files.length < 2) return;
   select(
     files[(files.indexOf(selected) + direction + files.length) % files.length],
+    { axis: "row", direction },
   );
 }
 function stepColumn(direction: number) {
   const lane = fileLocation(selected).lane;
-  const next = Math.max(
-    0,
-    Math.min(archiveColumns.length - 1, lane + direction),
-  );
-  if (next !== lane) select(columnMemory[next]);
+  const next = wrap(lane + direction, archiveColumns.length);
+  select(columnMemory[next], { axis: "lane", direction });
 }
 function updateSelection() {
   const r = records[selected];
@@ -194,9 +193,8 @@ function updateSelection() {
   $("#column-number").textContent =
     `COLUMN ${String(lane + 1).padStart(2, "0")} / 05`;
   $("#column-name").textContent = archiveColumns[lane];
-  $<HTMLButtonElement>('[data-action="column-prev"]').disabled = lane === 0;
-  $<HTMLButtonElement>('[data-action="column-next"]').disabled =
-    lane === archiveColumns.length - 1;
+  $<HTMLButtonElement>('[data-action="column-prev"]').disabled = false;
+  $<HTMLButtonElement>('[data-action="column-next"]').disabled = false;
   document.querySelectorAll("[data-select]").forEach((b) => {
     (b as HTMLElement).hidden = !files.includes(
       Number((b as HTMLElement).dataset.select),
@@ -397,9 +395,7 @@ document.addEventListener("click", (e) => {
   if (action === "column-next") stepColumn(1);
   if (action === "open") openFile();
   if (action === "model-viewer" && mode === "detail") {
-    viewer ??= new ModelViewer($("#stage"), () =>
-      audio.play("back"),
-    );
+    viewer ??= new ModelViewer($("#stage"), () => audio.play("back"));
     viewer.open(
       records[selected].id,
       records[selected].title,
@@ -671,9 +667,9 @@ async function start() {
       document.fonts.load("700 20px MiSans"),
     ]);
     scene.select(selected);
-    scene.onSelect = (i) => {
+    scene.onSelect = (i, cell) => {
       if (mode === "boot") return;
-      select(i);
+      select(i, cell ? { cell } : undefined);
     };
     scene.onHover = (i) => {
       if (i === null) {

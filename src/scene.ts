@@ -8,6 +8,20 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
 import { CardAppearance } from "./appearance";
 import { fileAtSlot, fileLocation } from "./data";
+import {
+  cellKey,
+  sameCell,
+  selectionCell,
+  fileAtCell,
+  poolCell,
+  visibleCell,
+  LOOP_COLUMNS,
+  LOOP_ROWS,
+  COLUMN_SPACING,
+  ROW_SPACING,
+  type ArchiveCell,
+  type ArchiveNavigation,
+} from "./archive-loop";
 import { labelMarkSvg } from "./brand";
 import {
   archiveWave,
@@ -40,6 +54,10 @@ export class ArchiveScene {
   private raycaster = new THREE.Raycaster();
   private dummy = new THREE.Object3D();
   private positions: THREE.Vector3[] = [];
+  private cells: ArchiveCell[] = [];
+  private selectedCell: ArchiveCell = { lane: 2, row: 12 };
+  private looping = false;
+  private coordinateOrigin: ArchiveCell = { lane: 0, row: 0 };
   private lift = { value: 0, velocity: 0 };
   private rail = { value: 0, velocity: 0 };
   private shoulder = { value: 12, velocity: 0 };
@@ -57,6 +75,7 @@ export class ArchiveScene {
   private outgoing: {
     group: THREE.Group;
     slot: number;
+    cell: ArchiveCell;
     lift: { value: number; velocity: number };
     returnY: number | null;
   }[] = [];
@@ -79,7 +98,7 @@ export class ArchiveScene {
   private labelMark = new Image();
   private reduced = false;
   private highQuality = true;
-  onSelect?: (index: number) => void;
+  onSelect?: (index: number, cell?: ArchiveCell) => void;
   onHover?: (index: number | null) => void;
   constructor(private container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -174,13 +193,12 @@ export class ArchiveScene {
     gltf.scene.traverse((o) => {
       if (o instanceof THREE.Mesh) meshes.push(o);
     });
-    const count = 160;
-    for (let lane = 0; lane < 5; lane++)
-      for (let row = 0; row < 32; row++) {
-        this.positions.push(
-          new THREE.Vector3((lane - 2) * 5.2, -4.6, (row - 15.5) * 0.62),
-        );
-      }
+    const count = LOOP_COLUMNS * LOOP_ROWS;
+    for (let index = 0; index < count; index++) {
+      const cell = poolCell(index);
+      this.cells.push(cell);
+      this.positions.push(this.cellPosition(cell));
+    }
     for (const mesh of meshes) {
       const geom = mesh.geometry
         .clone()
@@ -401,6 +419,17 @@ export class ArchiveScene {
     };
   }
   setMode(mode: "hidden" | "archive" | "detail") {
+    this.looping = mode !== "hidden";
+    if (!this.looping) {
+      const canonical = fileLocation(fileAtSlot(this.selectedSlot));
+      this.selectedCell = { lane: canonical.lane, row: canonical.row };
+      this.coordinateOrigin = { lane: 0, row: 0 };
+      for (const old of this.outgoing) {
+        this.scene.remove(old.group);
+        this.appearance.dispose(old.group);
+      }
+      this.outgoing = [];
+    }
     this.lastInteraction = this.clock;
     this.targetReveal = mode === "hidden" ? 0 : 1;
     this.targetDetail = mode === "detail" ? 1 : 0;
@@ -419,11 +448,53 @@ export class ArchiveScene {
     this.bokeh.enabled = high;
     this.resize();
   }
-  select(index: number) {
+  private cellPosition(cell: ArchiveCell) {
+    return new THREE.Vector3(
+      (cell.lane - 2) * COLUMN_SPACING,
+      -4.6,
+      (cell.row - 15.5) * ROW_SPACING,
+    );
+  }
+  private rebaseCoordinates() {
+    // Periodically reduce the logical coordinates while preserving every
+    // relative position, spring velocity, ripple and idle phase.
+    const shift = {
+      lane:
+        Math.abs(this.selectedCell.lane) > 2048
+          ? Math.round((this.selectedCell.lane - 2) / 5) * 5
+          : 0,
+      row:
+        Math.abs(this.selectedCell.row) > 2048
+          ? Math.floor((this.selectedCell.row - 12) / 8) * 8
+          : 0,
+    };
+    if (!shift.lane && !shift.row) return;
+    this.selectedCell.lane -= shift.lane;
+    this.selectedCell.row -= shift.row;
+    this.coordinateOrigin.lane += shift.lane;
+    this.coordinateOrigin.row += shift.row;
+    this.laneFocus.value -= shift.lane;
+    this.shoulder.value -= shift.row;
+    this.columnCamera.value -= shift.lane * COLUMN_SPACING;
+    this.rail.value += shift.row * ROW_SPACING;
+    for (const old of this.outgoing) {
+      old.cell.lane -= shift.lane;
+      old.cell.row -= shift.row;
+    }
+    for (const pulse of this.pulses) {
+      pulse.lane -= shift.lane;
+      pulse.row -= shift.row;
+    }
+  }
+  select(index: number, navigation?: ArchiveNavigation) {
     this.lastInteraction = this.clock;
     const next = fileLocation(index).slot;
-    const changed = next !== this.selectedSlot;
-    if (next !== this.selectedSlot && this.loaded && this.lift.value > 0.0001) {
+    const canonical = fileLocation(index);
+    const cell = this.looping
+      ? selectionCell(index, this.selectedCell, navigation)
+      : { lane: canonical.lane, row: canonical.row };
+    const changed = !sameCell(cell, this.selectedCell);
+    if (this.looping && changed && this.loaded && this.lift.value > 0.0001) {
       const group = this.model.clone(true);
       this.appearance.prepare(group);
       const label = group.children[group.children.length - 1] as THREE.Mesh;
@@ -444,6 +515,7 @@ export class ArchiveScene {
       this.outgoing.push({
         group,
         slot: this.selectedSlot,
+        cell: { ...this.selectedCell },
         lift: { ...this.lift },
         returnY: group.rotation.y !== 0 ? group.position.y : null,
       });
@@ -451,11 +523,12 @@ export class ArchiveScene {
       this.lift.velocity = 0;
     }
     this.selectedSlot = next;
+    this.selectedCell = cell;
     if (changed) {
       this.rotation = 0;
       this.returnY = null;
     }
-    const returning = this.outgoing.findIndex((o) => o.slot === next);
+    const returning = this.outgoing.findIndex((o) => sameCell(o.cell, cell));
     if (returning >= 0) {
       const o = this.outgoing[returning];
       this.lift = { ...o.lift };
@@ -466,8 +539,8 @@ export class ArchiveScene {
       this.outgoing.splice(returning, 1);
     }
     this.pulses.push({
-      row: next % 32,
-      lane: Math.floor(next / 32),
+      row: cell.row,
+      lane: cell.lane,
       time: this.clock,
     });
     this.pulses = this.pulses.slice(-6);
@@ -557,7 +630,7 @@ export class ArchiveScene {
       this.onHover?.(
         hit
           ? hit.instanceId !== undefined
-            ? fileAtSlot(hit.instanceId)
+            ? fileAtCell(this.cells[hit.instanceId])
             : fileAtSlot(this.selectedSlot)
           : null,
       );
@@ -584,8 +657,11 @@ export class ArchiveScene {
       if (hit)
         this.onSelect?.(
           hit.instanceId !== undefined
-            ? fileAtSlot(hit.instanceId)
+            ? fileAtCell(this.cells[hit.instanceId])
             : fileAtSlot(this.selectedSlot),
+          hit.instanceId !== undefined
+            ? { ...this.cells[hit.instanceId] }
+            : { ...this.selectedCell },
         );
     });
     canvas.addEventListener("pointercancel", () => (this.dragging = false));
@@ -617,14 +693,12 @@ export class ArchiveScene {
       this.scanTime += dt;
       this.scanBlend *= Math.exp(-dt * 3);
     }
-    const chosen = this.positions[this.selectedSlot];
-    damp(this.shoulder, this.selectedSlot % 32, this.reduced ? 35 : 5, dt);
-    damp(
-      this.laneFocus,
-      Math.floor(this.selectedSlot / 32),
-      this.reduced ? 35 : 4,
-      dt,
-    );
+    if (this.looping && !cinematic) this.rebaseCoordinates();
+    const chosen = this.cellPosition(this.selectedCell);
+    const selectedRow = this.selectedCell.row;
+    const selectedLane = this.selectedCell.lane;
+    damp(this.shoulder, selectedRow, this.reduced ? 35 : 5, dt);
+    damp(this.laneFocus, selectedLane, this.reduced ? 35 : 4, dt);
     damp(this.columnCamera, chosen.x, this.reduced ? 35 : 3.7, dt);
     damp(
       this.rail,
@@ -637,11 +711,27 @@ export class ArchiveScene {
       this.rail.velocity = 0;
       this.lift.value = extraction(shot);
       this.lift.velocity = 0;
-      this.shoulder.value = this.selectedSlot % 32;
-      this.laneFocus.value = Math.floor(this.selectedSlot / 32);
+      this.shoulder.value = selectedRow;
+      this.laneFocus.value = selectedLane;
       this.laneFocus.velocity = 0;
       this.columnCamera.value = chosen.x;
       this.columnCamera.velocity = 0;
+    }
+    // Keep the illuminated set near the origin. Lateral navigation is a track
+    // movement of the whole array, just like the existing front/back rail.
+    const trackX = cinematic ? 0 : this.columnCamera.value;
+    const center = {
+      lane: this.columnCamera.value / COLUMN_SPACING + 2,
+      row: (-this.rail.value - 2.17) / ROW_SPACING + 15.5,
+    };
+    for (let i = 0; i < this.positions.length; i++) {
+      this.cells[i] =
+        cinematic || !this.looping ? poolCell(i) : visibleCell(i, center);
+      this.positions[i].set(
+        (this.cells[i].lane - 2) * COLUMN_SPACING,
+        -4.6,
+        (this.cells[i].row - 15.5) * ROW_SPACING,
+      );
     }
     this.pulses = this.pulses.filter((p) => time - p.time < 3.2);
     const aligningCopy = this.outgoing.some((o) => o.returnY !== null);
@@ -676,8 +766,18 @@ export class ArchiveScene {
           this.laneFocus.value,
         );
       let height =
-        archiveWave(row, lane, this.scanTime) * this.scanBlend +
-        idleWave(row, lane, time) * this.idleGain;
+        archiveWave(
+          row + this.coordinateOrigin.row,
+          lane + this.coordinateOrigin.lane,
+          this.scanTime,
+        ) *
+          this.scanBlend +
+        idleWave(
+          row + this.coordinateOrigin.row,
+          lane + this.coordinateOrigin.lane,
+          time,
+        ) *
+          this.idleGain;
       if (!cinematic && !this.reduced) {
         let ripple = 0;
         for (const p of this.pulses) {
@@ -693,9 +793,7 @@ export class ArchiveScene {
           columnStrength(lane, this.laneFocus.value)
       );
     };
-    const selectedBase =
-      chosen.y +
-      field(this.selectedSlot % 32, Math.floor(this.selectedSlot / 32));
+    const selectedBase = chosen.y + field(selectedRow, selectedLane);
     if (!cinematic) {
       if (this.returnY !== null && this.rotation !== 0) {
         this.lift.value = this.returnY - selectedBase;
@@ -709,9 +807,8 @@ export class ArchiveScene {
             : this.outgoing.some(
                   (o) =>
                     o.returnY !== null &&
-                    Math.floor(o.slot / 32) ===
-                      Math.floor(this.selectedSlot / 32) &&
-                    Math.abs((o.slot % 32) - (this.selectedSlot % 32)) < 5,
+                    o.cell.lane === selectedLane &&
+                    Math.abs(o.cell.row - selectedRow) < 5,
                 )
               ? 0
               : 0.4 * this.targetReveal,
@@ -738,8 +835,8 @@ export class ArchiveScene {
       : -28 * (1 - entry);
     for (let i = this.outgoing.length - 1; i >= 0; i--) {
       const o = this.outgoing[i];
-      const p = this.positions[o.slot];
-      const baseY = p.y + field(o.slot % 32, Math.floor(o.slot / 32));
+      const p = this.cellPosition(o.cell);
+      const baseY = p.y + field(o.cell.row, o.cell.lane);
       o.group.rotation.y = returnStep(o.group.rotation.y, dt, this.reduced);
       if (o.returnY !== null) {
         o.lift.value = o.returnY - baseY;
@@ -747,14 +844,13 @@ export class ArchiveScene {
         if (o.group.rotation.y === 0) o.returnY = null;
       } else damp(o.lift, 0, this.reduced ? 35 : 4.5, dt);
       o.group.position.set(
-        p.x,
+        p.x - trackX,
         baseY + o.lift.value,
         p.z + entryZ + this.rail.value,
       );
       const quality = ease(o.lift.value / 0.4);
       this.appearance.apply(o.group, quality);
-      const row = o.slot % 32,
-        lane = Math.floor(o.slot / 32);
+      const { row, lane } = o.cell;
       o.group.rotation.x =
         (field(row + 0.5, lane) - field(row - 0.5, lane)) *
         0.024 *
@@ -768,41 +864,37 @@ export class ArchiveScene {
     }
     // Resolve returning copies before restoring their array instances, avoiding
     // a missing file for one frame at the ownership handoff.
-    const hidden = new Set(this.outgoing.map((o) => o.slot));
-    hidden.add(this.selectedSlot);
+    const hidden = new Set(this.outgoing.map((o) => cellKey(o.cell)));
+    hidden.add(cellKey(this.selectedCell));
     for (let i = 0; i < this.positions.length; i++) {
       const p = this.positions[i];
-      const row = i % 32,
-        lane = Math.floor(i / 32);
+      const { row, lane } = this.cells[i];
       const slope = field(row + 0.5, lane) - field(row - 0.5, lane);
       this.dummy.position.set(
-        p.x,
+        p.x - trackX,
         p.y + field(row, lane),
         p.z + entryZ + this.rail.value,
       );
       this.dummy.rotation.set(slope * 0.024 * (1 - detail), 0, 0);
-      this.dummy.scale.setScalar(hidden.has(i) ? 0 : 1);
+      this.dummy.scale.setScalar(
+        hidden.has(cellKey(this.cells[i])) ||
+          ((cinematic || !this.looping) && i >= 160)
+          ? 0
+          : 1,
+      );
       this.dummy.updateMatrix();
       for (const inst of this.instances) inst.setMatrixAt(i, this.dummy.matrix);
     }
     for (const inst of this.instances) inst.instanceMatrix.needsUpdate = true;
     this.model.position.set(
-      chosen.x,
-      chosen.y +
-        field(this.selectedSlot % 32, Math.floor(this.selectedSlot / 32)) +
-        this.lift.value,
+      chosen.x - trackX,
+      chosen.y + field(selectedRow, selectedLane) + this.lift.value,
       chosen.z + entryZ + this.rail.value,
     );
     // Extraction only changes elevation. Reframing belongs to the camera.
     this.model.rotation.set(
-      (field(
-        (this.selectedSlot % 32) + 0.5,
-        Math.floor(this.selectedSlot / 32),
-      ) -
-        field(
-          (this.selectedSlot % 32) - 0.5,
-          Math.floor(this.selectedSlot / 32),
-        )) *
+      (field(selectedRow + 0.5, selectedLane) -
+        field(selectedRow - 0.5, selectedLane)) *
         0.024 *
         (1 - detail) *
         (1 - ease(this.lift.value / 0.4)),
@@ -865,7 +957,7 @@ export class ArchiveScene {
         right,
         -2.05 * (1 - pan) * ease((shot - 24.2) / 0.8),
       );
-    } else cameraAim.x += this.columnCamera.value;
+    }
     if (cinematic && shot >= 25.05 && shot <= 27.3) {
       // Frames 760–785: the camera carries the same physical column from the
       // right into the selected position while the neighboring crests subside.
@@ -961,17 +1053,14 @@ export class ArchiveScene {
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
     let neighborTop = -Infinity;
-    const lane = Math.floor(this.selectedSlot / 32),
-      row = this.selectedSlot % 32;
-    for (let r = Math.max(0, row - 5); r <= Math.min(31, row + 5); r++) {
+    const lane = selectedLane,
+      row = selectedRow;
+    for (let r = row - 5; r <= row + 5; r++) {
       if (r !== row)
         neighborTop = Math.max(neighborTop, -4.6 + field(r, lane) + 3.76);
     }
     for (const o of this.outgoing) {
-      if (
-        Math.floor(o.slot / 32) === lane &&
-        Math.abs((o.slot % 32) - row) <= 5
-      ) {
+      if (o.cell.lane === lane && Math.abs(o.cell.row - row) <= 5) {
         neighborTop = Math.max(neighborTop, o.group.position.y + 3.76);
       }
     }
@@ -1041,6 +1130,14 @@ export class ArchiveScene {
       referenceTime: Math.round((this.scanTime + 5) * 100) / 100,
       selectedSlot: this.selectedSlot,
       selectedLane: Math.floor(this.selectedSlot / 32),
+      selectedCell: { ...this.selectedCell },
+      coordinateOrigin: { ...this.coordinateOrigin },
+      poolBounds: {
+        minLane: Math.min(...this.cells.map((c) => c.lane)),
+        maxLane: Math.max(...this.cells.map((c) => c.lane)),
+        minRow: Math.min(...this.cells.map((c) => c.row)),
+        maxRow: Math.max(...this.cells.map((c) => c.row)),
+      },
       laneFocus: this.laneFocus.value,
       columnCamera: this.columnCamera.value,
       rotation: this.rotation,
@@ -1056,6 +1153,7 @@ export class ArchiveScene {
       fogFar: (this.scene.fog as THREE.Fog).far,
       returningAppearance: this.outgoing.map((o) => ({
         slot: o.slot,
+        cell: { ...o.cell },
         lift: o.lift.value,
         quality: ease(o.lift.value / 0.4),
         rotation: o.group.rotation.y,

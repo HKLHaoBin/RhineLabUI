@@ -54,7 +54,7 @@ npm run dev
 
 ## Blender 资产
 
-模型通过本机 Blender MCP 创建，而后导出 GLB。包含聚合物外壳、内层散射板、双圆盘、金属螺钉、香槟色索引片、印字与模压刻线。背景阵列使用 **160 个实例**；抽出的档案使用完整细节与物理透射材质。实时编号标签随选中文件更新。
+模型通过本机 Blender MCP 创建，而后导出 GLB。包含聚合物外壳、内层散射板、双圆盘、金属螺钉、香槟色索引片、印字与模压刻线。原片时间轴使用 **160 个位置**；交互阵列使用固定的 **288 个循环位置**，支持上下与左右持续循环。抽出的档案使用完整细节与物理透射材质，实时编号标签随选中文件更新。
 
 重新建模时，在 Blender MCP 中执行 `art/build_archive.py`，再执行 `art/setup_studio.py`。脚本中的 `ROOT` 使用当前项目绝对路径；移动项目后需调整。
 
@@ -74,6 +74,8 @@ npm run dev
 - `/?time=34&freeze=1`：档案特写，对应原片约 39 秒。
 
 运动检查使用 `node scripts/check-motion.mjs`（Node 24）。
+
+循环逻辑检查使用 `node scripts/check-loop.mjs`；`/reference/loop-review.html` 运行实际场景的循环、归位、坐标重置和原片时间轴回归检查。
 
 ## 内容与范围
 
