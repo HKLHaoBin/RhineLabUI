@@ -39,8 +39,8 @@ $("#stage").innerHTML = `
   <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g></svg>
   <div id="inspection-text" aria-hidden="true">CONFIDENTIALITY:<strong>GENERAL BUSINESS USE</strong></div>
   <section id="archive-ui" class="archive-ui" aria-label="档案选择">
-    <div class="archive-callout"><div class="eyebrow">INTERNAL DATABASE <span>／</span> <span id="archive-category">机构档案</span></div><button class="file-title" data-action="open">FILE NUMBER: <span id="selected-id">X-001</span><span class="file-open">↗</span></button><div class="callout-rule"><i></i></div><div class="file-summary"><span id="selected-title">莱茵生命</span><span id="selected-clearance">BUSINESS AREA</span></div><button class="read-file" data-action="open">ACCESS FILE <span>→</span></button></div>
-    <div id="hover-label" class="hover-label"></div>
+    <div class="archive-callout"><div class="eyebrow">INTERNAL DATABASE <span>／</span> <span id="archive-category">机构档案</span></div><button class="file-title" data-action="open">FILE NUMBER: <span id="selected-id">X-<span id="selected-code">001</span></span><span class="file-open">↗</span></button><div class="callout-rule"><i></i></div><div class="file-summary"><span id="selected-title">莱茵生命</span><span id="selected-clearance">BUSINESS AREA</span></div><button class="read-file" data-action="open">ACCESS FILE <span>→</span></button></div>
+    <div id="hover-label" class="hover-label" hidden>X-<span id="hover-code">001</span><span id="hover-title"></span></div>
     <div class="archive-counter"><span class="tiny-label">ARCHIVE / SELECT</span><div><span id="selected-number">01</span><i>/</i><span class="count-total">12</span></div></div>
     <div class="archive-navigation"><button data-action="prev" aria-label="上一个档案">↑</button><div id="file-ticks" class="file-ticks"></div><button data-action="next" aria-label="下一个档案">↓</button></div>
     <div class="column-navigation"><button data-action="column-prev" aria-label="上一列">←</button><div><span id="column-number">COLUMN <span id="column-index">03</span> / 05</span><strong id="column-name">机构档案</strong></div><button data-action="column-next" aria-label="下一列">→</button></div>
@@ -117,6 +117,13 @@ const columnCounter = createRollingNumber($("#column-index"), {
   ...numberOptions,
   value: 3,
 });
+const codeOptions = {
+  ...numberOptions,
+  format: { minimumIntegerDigits: 3, useGrouping: false },
+  value: 1,
+};
+const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
+const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
 audio.enabled = prefs.sound;
 let scene: ArchiveScene;
@@ -138,6 +145,8 @@ function savePrefs() {
   scene?.setQuality(prefs.quality);
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
   columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
+  selectedCode.update({ animated: !prefs.reduced && mode === "archive" });
+  hoverCode.update({ animated: !prefs.reduced && mode === "archive" });
   $("#stage").classList.toggle("reduce-motion", prefs.reduced);
 }
 function fit() {
@@ -201,7 +210,6 @@ function updateSelection(navigation?: ArchiveNavigation) {
   const r = records[selected];
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
-  $("#selected-id").textContent = r.id;
   $("#selected-title").textContent = r.title;
   $("#selected-clearance").textContent = r.clearance;
   $("#archive-category").textContent = r.category;
@@ -211,6 +219,11 @@ function updateSelection(navigation?: ArchiveNavigation) {
         ? "up"
         : "down"
       : "auto";
+  selectedCode.update({
+    value: Number(r.id.slice(2)),
+    animated: !prefs.reduced && mode === "archive",
+    direction,
+  });
   fileCounter.update({
     value: files.indexOf(selected) + 1,
     animated: !prefs.reduced && mode === "archive",
@@ -708,11 +721,17 @@ async function start() {
       select(i, cell ? { cell } : undefined);
     };
     scene.onHover = (i) => {
+      const label = $("#hover-label");
       if (i === null) {
-        $("#hover-label").textContent = "";
+        label.hidden = true;
         return;
       }
-      $("#hover-label").textContent = records[i].id + " / " + records[i].title;
+      hoverCode.update({
+        value: Number(records[i].id.slice(2)),
+        animated: !label.hidden && !prefs.reduced && mode === "archive",
+      });
+      $("#hover-title").textContent = " / " + records[i].title;
+      label.hidden = false;
     };
     savePrefs();
     ready = true;

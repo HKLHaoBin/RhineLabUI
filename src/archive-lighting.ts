@@ -8,7 +8,7 @@ export type LightingLook = "baseline" | "refined";
 export function createArchiveLighting(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
-  look: LightingLook = "refined",
+  look: LightingLook = "baseline",
 ) {
   const refined = look === "refined";
   renderer.toneMappingExposure = refined ? 1.0 : 1.05;

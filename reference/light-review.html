@@ -68,14 +68,14 @@
         >
       </header>
       <p class="intro">
-        运动已恢复原始基线。这里对照亮边、透光面的暖色层次与卡片之间的阴影。
+        主界面已恢复原始基线的运动、颜色与光照。右侧保留光影实验供回看。
       </p>
       <section class="toolbar">
         <label
           >左侧
           <select id="source">
             <option value="original">原视频</option>
-            <option value="baseline">调整前</option>
+            <option value="baseline">基线（当前采用）</option>
           </select></label
         ><button class="shot" data-frame="690">27.60 秒 · 阵列入场</button
         ><button class="shot" data-frame="729">29.16 秒 · 波峰</button
@@ -100,7 +100,7 @@
         </article>
         <article>
           <div class="caption">
-            <h2>光影微调</h2>
+            <h2>光影实验</h2>
             <span>相同模型与镜头</span>
           </div>
           <div class="view" id="after"><div class="scene"></div></div>
@@ -108,7 +108,7 @@
       </section>
       <p id="status" role="status">正在加载两份实时场景…</p>
       <footer>
-        可切换左侧为调整前，直接观察光影变化。原片图片仅用于本地审阅。<a
+        可切换左侧为基线（当前采用），直接观察光影变化。原片图片仅用于本地审阅。<a
           href="/reference/wave-compare.html"
           >运动版本对比 ↗</a
         >
@@ -150,7 +150,7 @@
         $("#original").alt = `原视频第 ${current} 帧`;
         $("#original").hidden = $("#source").value !== "original";
         $("#left-title").textContent =
-          $("#source").value === "original" ? "原视频" : "调整前";
+          $("#source").value === "original" ? "原视频" : "基线（当前采用）";
         document
           .querySelectorAll("[data-frame]")
           .forEach((b) =>

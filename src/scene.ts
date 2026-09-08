@@ -106,7 +106,7 @@ export class ArchiveScene {
     private container: HTMLElement,
     private readonly selectionPulse = baselineSelectionWave,
     private readonly deferSelectionPulse = false,
-    private readonly lightingLook: LightingLook = "refined",
+    private readonly lightingLook: LightingLook = "baseline",
   ) {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
