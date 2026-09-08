@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { damp } from "./motion";
 
 const PARTS = [
@@ -40,11 +41,7 @@ export class ModelViewer {
   private provider?: () => Promise<ModelSource>;
   isOpen = false;
 
-  constructor(
-    parent: HTMLElement,
-    environment: THREE.Texture | null,
-    onClose: () => void,
-  ) {
+  constructor(parent: HTMLElement, onClose: () => void) {
     this.onClose = onClose;
     this.root = document.createElement("section");
     this.root.className = "model-viewer";
@@ -54,6 +51,7 @@ export class ModelViewer {
     this.root.setAttribute("aria-labelledby", "viewer-title");
     this.root.innerHTML = `
       <div class="viewer-canvas"></div>
+      <div class="scene-atmosphere viewer-atmosphere" aria-hidden="true"></div>
       <header class="viewer-header">
         <button class="viewer-back" data-viewer="close">← <span>返回档案</span><kbd>ESC</kbd></button>
         <div class="viewer-heading"><span>RHINE LAB / OBJECT STUDY</span><h2 id="viewer-title">档案模型</h2><p id="viewer-file"></p></div>
@@ -81,8 +79,15 @@ export class ModelViewer {
       "档案三维模型：拖动旋转，方向键平移，滚轮或加减键缩放，Home 复位",
     );
     this.canvasHost.appendChild(this.renderer.domElement);
-    this.scene.background = new THREE.Color("#e8e5e1");
-    this.scene.environment = environment;
+    this.scene.background = new THREE.Color("#eae5e1");
+    this.scene.fog = new THREE.Fog("#eae5e1", 13.5, 26.5);
+    // Render-target textures belong to their WebGL context. Recreate the main
+    // scene's light room here so this renderer receives its actual illumination.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.scene.environment = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
     this.scene.environmentIntensity = 0.48;
     this.scene.add(new THREE.HemisphereLight("#fffaf5", "#b4a18c", 0.65));
     const key = new THREE.DirectionalLight("#fff7ed", 1.4);
@@ -350,6 +355,12 @@ export class ModelViewer {
       }
     }
     this.controls.update();
+    // Match the detail scene's gentle haze without washing out the object as
+    // the user zooms. The assembled model is centered on the world origin.
+    const fog = this.scene.fog as THREE.Fog;
+    const objectDistance = this.camera.position.length();
+    fog.near = Math.max(0, objectDistance - 1);
+    fog.far = objectDistance + 12;
     this.renderer.render(this.scene, this.camera);
     this.root.dataset.stats = JSON.stringify({
       ready: Boolean(this.source),

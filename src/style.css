@@ -1677,6 +1677,10 @@ button {
 .model-viewer[hidden] {
   display: none;
 }
+.model-viewer .viewer-atmosphere {
+  opacity: 1;
+  transition: none;
+}
 .viewer-canvas {
   position: absolute;
   inset: 0;

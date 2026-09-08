@@ -397,7 +397,7 @@ document.addEventListener("click", (e) => {
   if (action === "column-next") stepColumn(1);
   if (action === "open") openFile();
   if (action === "model-viewer" && mode === "detail") {
-    viewer ??= new ModelViewer($("#stage"), scene.scene.environment, () =>
+    viewer ??= new ModelViewer($("#stage"), () =>
       audio.play("back"),
     );
     viewer.open(
