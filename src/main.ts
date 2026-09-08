@@ -4,6 +4,7 @@ import { createRollingNumber } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
 import { ScrubTitle } from "./scrub-title";
+import { BootSequence } from "./boot";
 import { wrap, type ArchiveNavigation } from "./archive-loop";
 import {
   records,
@@ -33,8 +34,8 @@ $("#stage").innerHTML = `
     <div class="access-text">ACCESS</div>
     <div class="boot-logo">${logo}</div>
     <div class="auth-status"><span>▪</span> <span id="auth-message"></span><i></i></div>
-    <div class="scan"><svg viewBox="0 0 1100 1100"><g fill="none"><circle class="scan-track" cx="550" cy="550" r="508"/><circle class="scan-ring ring-one" cx="550" cy="550" r="525"/><circle class="scan-ring ring-two" cx="550" cy="550" r="186"/><circle class="scan-ring ring-three" cx="550" cy="550" r="445"/></g><g class="scan-nodes"><circle cx="790" cy="242" r="13"/><circle cx="310" cy="858" r="13"/></g></svg><span>PERMISSION AUTHORIZED</span></div>
-    <div class="welcome"><div>WELCOME TO</div><strong>RHINE LAB.LLC.</strong><div class="welcome-logo">${logo}</div></div>
+    <div class="scan"><svg viewBox="0 0 1920 1080" aria-hidden="true"><g fill="none" stroke="#080a08" stroke-width="2" stroke-linecap="round"><path/><path stroke="#fff"/><path/><path/><path/><path/><circle class="orbit-dot" r="8" fill="#ed821b" stroke="none"/><circle class="orbit-dot" r="8" fill="#ed821b" stroke="none"/><circle class="scan-core" cx="960" cy="540" r="5" fill="#080a08" stroke="none"/></g></svg><span>PERMISSION AUTHORIZED</span></div>
+    <div class="welcome"><div class="welcome-panel"></div><div class="welcome-heading">WELCOME TO</div><div class="welcome-company"><strong>RHINE LAB.LLC.</strong><strong class="welcome-highlight" aria-hidden="true">RHINE LAB.LLC.</strong></div><div class="welcome-database">INTERNAL DATABASE</div><div class="welcome-logo">${logo}</div></div>
   </section>
   <div id="cinema-caption" class="cinema-caption"></div>
   <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g></svg>
@@ -57,6 +58,12 @@ $("#stage").innerHTML = `
   <div id="modal-root"></div><div id="toast" class="toast" role="status"></div>
   <div id="loading" class="loading"><div class="loading-mark">${logo}</div><span>CONNECTING TO INTERNAL DATABASE</span><i></i></div>
 `;
+
+$("#boot-background").insertAdjacentHTML(
+  "beforeend",
+  '<div class="boot-white"></div>',
+);
+const bootSequence = new BootSequence($("#stage"));
 
 type Mode = "boot" | "archive" | "detail";
 let mode: Mode = "boot",
@@ -182,6 +189,7 @@ function setMode(next: Mode) {
   $("#detail-ui").hidden = next !== "detail";
   scene?.setMode(next === "boot" ? "hidden" : next);
   if (next !== "boot") {
+    bootSequence.reset();
     $(".file-title").firstChild!.textContent = "FILE NUMBER: ";
     $("#stage").dataset.boot = "done";
     $("#cinema-caption").textContent = "";
@@ -473,7 +481,8 @@ document.addEventListener("click", (e) => {
   }
   if (action === "replay" || action === "restart") {
     closeModal();
-    bootStart = performance.now() / 1000;
+    bootStart = performance.now() / 1000 - 1.76;
+    frozenTime = null;
     lastStep = "";
     setMode(prefs.reduced ? "archive" : "boot");
     scene.select(0);
@@ -565,35 +574,20 @@ const ease = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 function bootFrame(t: number) {
-  let step = "access",
-    message = "",
-    caption = "";
-  if (t >= 5.2) step = "logo";
-  if (t >= 6.8) {
-    step = "auth";
-    message = "ID CONFIRMED : JOYCE MOORE";
-    caption = "身份信息确认：JOYCE MOORE";
-  }
-  if (t >= 9.5) {
-    message = "REQUESTING ACCESS TO INTERNAL DATABASE";
-    caption = "正在请求访问内部数据库";
-  }
-  if (t >= 11.7) {
-    message = "VERIFYING SECURITY PROTOCOL";
-    caption = "验证安全协议";
-  }
-  if (t >= 13.4) {
-    message = "START PROCESSING";
-    caption = "开始处理";
-  }
-  if (t >= 15.2) {
-    step = "scan";
-    caption = "权限验证通过";
-  }
-  if (t >= 18.1) {
-    step = "welcome";
-    caption = "欢迎来到莱茵生命";
-  }
+  const motion = bootSequence.update(t);
+  let step: string = motion.step;
+  let caption =
+    motion.step === "auth"
+      ? t < 9.52
+        ? "身份信息确认：JOYCE MOORE"
+        : t < 11.84
+          ? "请求已接收"
+          : "开始处理"
+      : motion.step === "scan"
+        ? "权限验证通过"
+        : motion.step === "welcome"
+          ? "欢迎访问莱茵生命内部资料档案"
+          : "";
   if (t >= 22) {
     step = "array";
     caption = "选择档案";
@@ -612,23 +606,11 @@ function bootFrame(t: number) {
     if (["auth", "scan", "select"].includes(step))
       audio.play(step === "scan" ? "confirm" : "tick");
   }
-  $("#auth-message").textContent = message;
-  $(".access-text").textContent =
-    t < 1.1
-      ? "ACCESS"
-      : t < 2.5
-        ? "ACCESS PERMISSION"
-        : "ACCESS PERMISSION REQUIRED";
   $("#cinema-caption").textContent = caption;
   $(".file-title").firstChild!.textContent =
     step === "array"
       ? "SELECTING FILES...".slice(0, Math.max(0, Math.floor((t - 21.94) * 18)))
       : "FILE NUMBER: ";
-  const exitWelcome = ease((t - 21.28) / 0.42);
-  $(".welcome").style.opacity = String(
-    step === "welcome" ? 1 - exitWelcome : 0,
-  );
-  $(".welcome").style.transform = `translateY(${-12 * exitWelcome}px)`;
   $("#stage").style.setProperty(
     "--entry-opacity",
     String(ease((t - 21.9) / 0.13)),
@@ -747,7 +729,9 @@ async function start() {
     const params = new URLSearchParams(location.search);
     if (params.get("scene") === "archive") setMode("archive");
     if (params.get("scene") === "detail") setMode("detail");
-    if (params.has("time")) bootStart -= Number(params.get("time"));
+    bootStart -= params.has("time") ? Number(params.get("time")) : 1.76;
+    // Let the loading veil finish before the first reference letter appears.
+    if (!params.has("time")) bootStart += 0.6;
     if (prefs.reduced && !params.has("time")) setMode("archive");
     requestAnimationFrame(frame);
   } catch (error) {
