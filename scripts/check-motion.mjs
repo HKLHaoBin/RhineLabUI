@@ -50,9 +50,22 @@ assert.ok(
   "Neighbors keep moving during the first extraction hold",
 );
 assert.ok(
-  Math.abs(selectionWave(8, 1)) > 0.1,
+  selectionWave(8, 1) > 0.1,
   "Click ripple reaches neighboring rows",
 );
+for (let frame = 0; frame <= 200; frame++) {
+  for (let distance = 0; distance <= 32; distance += 0.5) {
+    const y = selectionWave(distance, frame / 60);
+    const age = frame / 60;
+    const ramp = Math.max(0, Math.min(1, age / 0.2));
+    const original = 0.8 * ramp ** 3 * (10 + ramp * (-15 + 6 * ramp)) *
+      Math.exp(-age * 1.15) * Math.cos((distance - age * 8) * 0.58) *
+      Math.exp(-0.5 * ((distance - age * 8) / 3.4) ** 2);
+    assert.ok(y >= 0 && y <= 0.8, "Selection pulse cannot create a negative trough");
+    if (age <= 3.2 && original > 0) assert.ok(Math.abs(y - original) < 1e-12,
+      "Positive crests retain the baseline amplitude and timing");
+  }
+}
 const coarse = { value: 5, velocity: -2 },
   fine = { ...coarse };
 for (let i = 0; i < 30; i++) damp(coarse, -3, 4, 1 / 30);

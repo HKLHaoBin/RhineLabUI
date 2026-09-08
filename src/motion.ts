@@ -42,11 +42,13 @@ export function settlingWave(distance: number, time: number) {
 }
 export function selectionWave(distance: number, age: number) {
   if (age < 0 || age > 3.2) return 0;
+  // Keep the original mechanical crest and timing, but omit its negative
+  // trough so the selection pulse never pushes a file below the base field.
   return (
     0.8 *
     smooth(age / 0.2) *
     Math.exp(-age * 1.15) *
-    Math.cos((distance - age * 8) * 0.58) *
+    Math.max(0, Math.cos((distance - age * 8) * 0.58)) *
     bell(distance - age * 8, 3.4)
   );
 }
