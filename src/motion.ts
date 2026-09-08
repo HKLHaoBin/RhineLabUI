@@ -40,17 +40,20 @@ export function settlingWave(distance: number, time: number) {
   const ring = age > 0 ? Math.sin(age * 5.1) * Math.exp(-age * 1.3) : 0;
   return envelope * (rise + 0.18 * ring * smooth(age / 0.16));
 }
-export function selectionWave(distance: number, age: number) {
+export function baselineSelectionWave(distance: number, age: number) {
   if (age < 0 || age > 3.2) return 0;
-  // Keep the original mechanical crest and timing, but omit its negative
-  // trough so the selection pulse never pushes a file below the base field.
   return (
     0.8 *
     smooth(age / 0.2) *
     Math.exp(-age * 1.15) *
-    Math.max(0, Math.cos((distance - age * 8) * 0.58)) *
+    Math.cos((distance - age * 8) * 0.58) *
     bell(distance - age * 8, 3.4)
   );
+}
+
+// Retained for the comparison experiments; the user chose the signed baseline.
+export function selectionWave(distance: number, age: number) {
+  return Math.max(0, baselineSelectionWave(distance, age));
 }
 
 // The source stays still while the crest expands around it. Squaring the

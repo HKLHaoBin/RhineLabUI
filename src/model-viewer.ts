@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { createArchiveLighting } from "./archive-lighting";
 import { damp } from "./motion";
 
 const PARTS = [
@@ -83,18 +83,7 @@ export class ModelViewer {
     this.scene.fog = new THREE.Fog("#eae5e1", 13.5, 26.5);
     // Render-target textures belong to their WebGL context. Recreate the main
     // scene's light room here so this renderer receives its actual illumination.
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const room = new RoomEnvironment();
-    this.scene.environment = pmrem.fromScene(room, 0.04).texture;
-    room.dispose();
-    pmrem.dispose();
-    this.scene.environmentIntensity = 0.48;
-    this.scene.add(new THREE.HemisphereLight("#fffaf5", "#b4a18c", 0.65));
-    const key = new THREE.DirectionalLight("#fff7ed", 1.4);
-    key.position.set(-6, 14, -5);
-    const fill = new THREE.DirectionalLight("#ffffff", 0.6);
-    fill.position.set(7, 8, -10);
-    this.scene.add(key, fill);
+    createArchiveLighting(this.renderer, this.scene);
     this.camera.position.copy(this.initialCamera);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;

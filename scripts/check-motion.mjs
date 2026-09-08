@@ -3,11 +3,24 @@ import {
   archiveWave,
   extraction,
   selectionWave,
+  baselineSelectionWave,
   rippleEnvelope,
   settlingWave,
   damp,
   idleWave,
 } from "../src/motion.ts";
+import { selectionWave as historicalWave } from "../reference/baseline-motion.ts";
+
+// The selected production motion is the original signed wave, including troughs.
+let baselineTrough = false;
+for (let frame = -1; frame <= 200; frame++) {
+  for (let distance = 0; distance <= 32; distance += 0.5) {
+    const restored = baselineSelectionWave(distance, frame / 60);
+    assert.equal(restored, historicalWave(distance, frame / 60));
+    baselineTrough ||= restored < -0.01;
+  }
+}
+assert.ok(baselineTrough, "The original negative trough is restored");
 
 let idleRange = 0;
 for (let lane = 0; lane < 5; lane++) {

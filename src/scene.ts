@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { createArchiveLighting, type LightingLook } from "./archive-lighting";
 import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
@@ -26,7 +26,7 @@ import { labelMarkSvg } from "./brand";
 import {
   archiveWave,
   extraction,
-  selectionWave,
+  baselineSelectionWave,
   rippleEnvelope,
   settlingWave,
   damp,
@@ -104,8 +104,9 @@ export class ArchiveScene {
   onHover?: (index: number | null) => void;
   constructor(
     private container: HTMLElement,
-    private readonly selectionPulse = selectionWave,
-    private readonly deferSelectionPulse = true,
+    private readonly selectionPulse = baselineSelectionWave,
+    private readonly deferSelectionPulse = false,
+    private readonly lightingLook: LightingLook = "refined",
   ) {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -129,15 +130,7 @@ export class ArchiveScene {
     container.appendChild(this.renderer.domElement);
     this.scene.background = new THREE.Color("#eae5e1");
     this.scene.fog = new THREE.Fog("#eae5e1", 22, 47);
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    const env = new RoomEnvironment();
-    this.scene.environment = pmrem.fromScene(env, 0.04).texture;
-    this.scene.environmentIntensity = 0.48;
-    env.dispose();
-    pmrem.dispose();
-    this.scene.add(new THREE.HemisphereLight("#fffaf5", "#b4a18c", 0.65));
-    this.light = new THREE.DirectionalLight("#fff7ed", 1.4);
-    this.light.position.set(-6, 14, -5);
+    this.light = createArchiveLighting(this.renderer, this.scene, lightingLook);
     this.light.castShadow = true;
     Object.assign(this.light.shadow.camera, {
       left: -16,
@@ -148,13 +141,9 @@ export class ArchiveScene {
       far: 45,
     });
     this.light.shadow.mapSize.set(2048, 2048);
-    this.light.shadow.normalBias = 0.035;
-    this.light.shadow.bias = -0.0003;
+    this.light.shadow.normalBias = lightingLook === "refined" ? 0.018 : 0.035;
+    this.light.shadow.bias = lightingLook === "refined" ? -0.00012 : -0.0003;
     this.light.shadow.radius = 4;
-    this.scene.add(this.light);
-    const fill = new THREE.DirectionalLight("#ffffff", 0.6);
-    fill.position.set(7, 8, -10);
-    this.scene.add(fill);
     const floor = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
       new THREE.MeshStandardMaterial({ color: "#d8c9b9", roughness: 0.95 }),
@@ -175,7 +164,7 @@ export class ArchiveScene {
       container.clientWidth,
       container.clientHeight,
     );
-    this.ao.kernelRadius = 0.38;
+    this.ao.kernelRadius = lightingLook === "refined" ? 0.44 : 0.38;
     this.ao.minDistance = 0.001;
     this.ao.maxDistance = 0.09;
     this.composer.addPass(this.ao);
@@ -238,7 +227,7 @@ export class ArchiveScene {
         };
       }
       if (name === "Internal_Ceramic") {
-        mat.color.set("#c7beb6");
+        mat.color.set(this.lightingLook === "refined" ? "#c4baae" : "#c7beb6");
         mat.roughness = 0.6;
       }
       if (name === "Printed_Label") mat.color.set("#eae5dc");
@@ -254,7 +243,7 @@ export class ArchiveScene {
         mat.roughness = 0.7;
       }
       if (name === "Subsurface_Optics") {
-        mat.color.set("#b9aba1");
+        mat.color.set(this.lightingLook === "refined" ? "#b9a796" : "#b9aba1");
         mat.roughness = 0.48;
         mat.metalness = 0.05;
       }
@@ -262,7 +251,7 @@ export class ArchiveScene {
         // Internal refractive shoulders must be in the opaque capture: WebGL's
         // screen-space transmission cannot recursively sample another glass mesh.
         mat.transmission = 0;
-        mat.color.set("#d4c7be");
+        mat.color.set(this.lightingLook === "refined" ? "#d8c7b5" : "#d4c7be");
         mat.roughness = 0.26;
         mat.metalness = 0.08;
       }
@@ -297,6 +286,13 @@ export class ArchiveScene {
       const arrayMat = mat.clone();
       if (name === "Frosted_Polymer") {
         arrayMat.transmission = 0.78;
+        if (this.lightingLook === "refined") {
+          // Longer oblique paths pick up the warm body tint, while the thin
+          // edges and the extracted clear cover retain a brighter response.
+          arrayMat.thickness = 0.28;
+          arrayMat.attenuationColor.set("#d4c7b4");
+          arrayMat.attenuationDistance = 1.2;
+        }
         arrayMat.transparent = false;
         arrayMat.color.set("#fff7ed");
         arrayMat.onBeforeCompile = (shader) => {
@@ -320,7 +316,9 @@ export class ArchiveScene {
       if (name === "Optical_Diffuser") arrayMat.color.set("#806447");
       if (name === "Ivory_Edges") {
         arrayMat.transmission = 0;
-        arrayMat.color.set("#fff5e9");
+        arrayMat.color.set(
+          this.lightingLook === "refined" ? "#dcc9b0" : "#fff5e9",
+        );
         arrayMat.roughness = 0.38;
       }
       if (name === "Champagne_Index") {

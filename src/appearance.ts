@@ -71,6 +71,24 @@ export class CardAppearance {
       if (!low) continue;
       const mat = mesh.material as Surface;
       mat.color.copy(low.color).lerp(high.color, value);
+      if (
+        mat.attenuationColor &&
+        low.attenuationColor &&
+        high.attenuationColor
+      ) {
+        mat.attenuationColor
+          .copy(low.attenuationColor)
+          .lerp(high.attenuationColor, value);
+        mat.attenuationDistance =
+          Number.isFinite(low.attenuationDistance) &&
+          Number.isFinite(high.attenuationDistance)
+            ? THREE.MathUtils.lerp(
+                low.attenuationDistance,
+                high.attenuationDistance,
+                value,
+              )
+            : high.attenuationDistance;
+      }
       for (const key of [
         "roughness",
         "metalness",

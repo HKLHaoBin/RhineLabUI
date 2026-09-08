@@ -19,7 +19,7 @@
         >
       </header>
       <p class="intro">
-        左侧选中与波浪同时开始。右侧先抬起新档案，等附近旧档案低于它，再让波浪向外传播。
+        当前主界面已恢复原始基线。左侧选中与波浪同时开始；右侧保留先抬起后波浪的实验方案，便于回看。
       </p>
       <section class="toolbar" aria-label="对比设置">
         <label
@@ -34,8 +34,8 @@
         <label
           >左侧
           <select id="baseline">
-            <option value="previous">上一版 · 去掉负波谷</option>
-            <option value="original">原始基线 · 保留负波谷</option>
+            <option value="original">当前采用 · 原始基线</option>
+            <option value="previous">实验 · 去掉负波谷</option>
           </select></label
         >
         <label
@@ -66,7 +66,7 @@
         </article>
         <article>
           <div class="caption">
-            <h2><i class="current"></i>先抬起，再波动</h2>
+            <h2><i class="current"></i>实验 · 先抬起，再波动</h2>
             <span id="after-phase">就位</span>
           </div>
           <div class="view" id="after">
@@ -109,7 +109,7 @@
           id="chart"
           viewBox="0 0 1120 190"
           role="img"
-          aria-label="基线与当前版本的档案高度曲线"
+          aria-label="基线与实验版本的档案高度曲线"
         ></svg>
         <p class="chart-note">
           虚线标记切换时刻。连续切换时，曲线会接续新选中档案的高度。

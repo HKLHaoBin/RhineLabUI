@@ -19,9 +19,10 @@
   <pre id="result">正在检查动画先后关系…</pre>
   <script type="module">
     import { ArchiveScene } from "/src/scene.ts";
+    import { selectionWave } from "/src/motion.ts";
     import { columnFiles } from "/src/data.ts";
     import { wrap, sameCell } from "/src/archive-loop.ts";
-    const s = new ArchiveScene(document.querySelector("#scene"));
+    const s = new ArchiveScene(document.querySelector("#scene"), selectionWave, true);
     await s.load();
     const draw = s.composer.render.bind(s.composer);
     s.composer.render = () => {};
