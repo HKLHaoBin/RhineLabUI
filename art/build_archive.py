@@ -1,7 +1,8 @@
 import bpy, math, os
 from mathutils import Vector
+from pathlib import Path
 
-ROOT = 'E:/AIProject/RhineLabUI'
+ROOT = str(Path(__file__).resolve().parents[1])
 scene = bpy.data.scenes.new('Rhine_Archive_Work')
 bpy.context.window.scene = scene
 for old in list(bpy.data.scenes):

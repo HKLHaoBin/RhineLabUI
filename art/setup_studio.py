@@ -1,5 +1,7 @@
 import bpy
 from mathutils import Vector
+from pathlib import Path
+ROOT = Path(__file__).resolve().parents[1]
 s=bpy.context.scene
 for obj in list(s.objects):
     if obj.type in ['CAMERA','LIGHT']:bpy.data.objects.remove(obj,do_unlink=True)
@@ -16,5 +18,5 @@ for name,loc,power,size in [('Softbox_Key',(-4,-5,8),950,7),('Softbox_Rim',(5,1,
     light.rotation_euler=((Vector((0,0,2))-light.location).to_track_quat('-Z','Y').to_euler())
 s.render.engine='CYCLES';s.cycles.samples=48;s.cycles.use_denoising=True
 s.render.resolution_x=1200;s.render.resolution_y=1000;s.render.resolution_percentage=100
-s.render.film_transparent=False;s.render.filepath='E:/AIProject/RhineLabUI/art/archive-studio.png'
-bpy.ops.wm.save_as_mainfile(filepath='E:/AIProject/RhineLabUI/art/rhine-archive.blend')
+s.render.film_transparent=False;s.render.filepath=str(ROOT/'art/archive-studio.png')
+bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'art/rhine-archive.blend'))

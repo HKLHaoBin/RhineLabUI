@@ -8,3 +8,11 @@ optix7cache.db
 reference/*.jpg
 reference/**/*.jpg
 art/.cache/
+.worktrees/
+release/
+video/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example

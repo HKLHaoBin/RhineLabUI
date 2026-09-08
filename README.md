@@ -1,99 +1,84 @@
 # RHINE LAB · ANALYSIS OS
 
-以工作目录中《明日方舟》特别映像「莱茵生命：访问」5–40 秒为参考的实时三维交互终端。
+把《明日方舟》特别映像「莱茵生命：访问」中的终端界面，复刻成可以实际操作的三维网页。由 GPT-6 Astra 协助编写代码，模型通过 Blender MCP 制作。
 
-## 运行
+参考片段为原 PV 的 5–40 秒：[BV1rr4y1b7sz](https://www.bilibili.com/video/BV1rr4y1b7sz/)。应用运行时使用实时三维模型与原生界面动画，不播放原视频作为背景。
 
-```powershell
-npm install
+## 快速运行
+
+安装 Node.js 22.12+（推荐 24 LTS），在项目目录运行：
+
+```sh
+npm ci
 npm run dev
 ```
 
-打开终端打印的本地地址。默认端口为 5173；本次预览使用 <http://127.0.0.1:5173/>。
+打开终端显示的本地地址，通常是 `http://127.0.0.1:5173/`。Windows 也可以双击 `启动终端.cmd`，首次运行会安装依赖并打开浏览器。首次安装需要网络，安装完成后可本地运行。
 
-也可以双击 `启动终端.cmd`。构建生产版本使用 `npm run build`，预览生产版本使用 `npm run preview`。
+```sh
+npm run build
+npm run preview
+```
 
-## 使用
+生产文件输出到 `dist/`；使用本地 HTTP 服务预览，不要直接双击 `dist/index.html`。
 
-- 默认播放约 35 秒的接入、身份验证、圆环扫描、欢迎、档案阵列展开与抽取镜头。
-- 点击右上角 **ENTER SYSTEM** 或按 Enter / Esc，直接进入档案阵列。
-- 点击三维档案、下方刻度或左右按钮选择档案；左右方向键也可以切换。
-- 点击 **ACCESS FILE** / 文件编号，或选择刻度后按 Enter，读取档案。
-- 在详情左侧拖动，可以转动档案盒。Esc 返回阵列。
-- `/` 打开检索；支持编号、标题、英文名称、科室和负责人，以及分类筛选。
-- 收藏与音效、减少动效、画质设置保存在当前浏览器的 localStorage。
-- **EXPORT** 链接对应实际的 UTF-8 文本文件，位于 `public/archives/`。
-- **REINITIALIZE** 重播完整启动过程；已开启减少动效时会直接重新进入阵列。
+## 交互
 
-## 工程
+- 开场：逐字输入、标志绘制、身份验证、圆环扫描、欢迎转场，以及档案阵列展开和抽取特写。正常启动从白色画面开始。
+- 按 Enter / Esc，或点击 ENTER SYSTEM，进入档案阵列。
+- 左右方向键切换五类档案，上下方向键切换同列档案；每类 8 份，共 40 份。首尾连续循环，切回某列时保留该列的选择。
+- 连续翻阅时编号滚动，标题闪动后收成横条；停下后恢复最终档案标题。
+- 点击 ACCESS FILE、文件编号或按 Enter 读取档案；获得净空后可拖动档案盒旋转。返回时先转正再收回。
+- `/` 打开检索，可按编号、标题、英文名、科室、负责人和分类查找。
+- 详情页支持研究记录、收藏和导出 UTF-8 档案文本。
+- 点击「360° 查看文档模型」进入独立查看页：拖动环绕、滚轮缩放、方向键平移、一键复位、拆解六组结构和连续重组。Esc 返回当前档案。
+- 收藏与音效、减少动态效果、画质设置保存在当前浏览器中。
 
-技术栈为 TypeScript + Three.js + Vite，没有使用前端或动效 Skill。Three.js 负责实时模型、实例化、环境光、阴影、景深与镜头；原生 DOM / CSS / SVG 负责字体、界面与标志。视频只用于观察与关键帧对照，运行时没有引用或播放视频。
+## 工程结构
 
-布局基准是 **1920×1080**，窗口按比例缩放并保留构图，主要面向桌面与横向大屏。文字采用设备上的 Arial / Helvetica 与 Microsoft YaHei 后备字体，没有打包字体文件。
+技术栈：TypeScript、Three.js、Vite、Rolling Number。布局以 1920 × 1080 为基准，等比例适应窗口，主要面向桌面和横向屏幕。
 
-文件说明：
-
-| 文件 | 用途 |
+| 目录或文件 | 用途 |
 | --- | --- |
-| `src/main.ts` | 启动时间轴、状态切换、检索、收藏、设置与键盘交互 |
-| `src/scene.ts` | 三维阵列、实例化、材质、镜头、射线拾取与景深 |
-| `src/motion.ts` | 波峰传播、两段抽取、点击涟漪与临界阻尼运动 |
-| `src/style.css` | 1920×1080 界面定位、排版及过渡 |
-| `src/data.ts` | 12 份可检索档案的内容 |
-| `src/audio.ts` | 可选的程序化界面提示音 |
-| `public/assets/archive-cassette.glb` | Blender MCP 制作并导出的档案盒模型 |
-| `art/rhine-archive.blend` | Blender 源文件，包含模型及审阅灯光、相机 |
-| `art/build_archive.py` | 通过 Blender MCP 执行的可复现建模与导出脚本 |
-| `art/setup_studio.py` | Blender 资产审阅灯光和相机配置 |
-| `art/archive-studio.png` | Blender Cycles 资产审阅图 |
-| `scripts/export-records.mjs` | 从同一档案数据生成可下载文本，开发和构建前自动运行 |
-| `DESIGN.md` | 视觉参考和设计记录 |
-| `verification/REPORT.md` | 验证记录与已知范围 |
-| `reference/review.html` | 同步原视频与实时场景，支持逐帧步进，仅开发环境使用 |
-| `reference/wave-compare.html` | 同步对比同时播放与先抬起后波浪，左侧可选原始基线或去波谷版本，含慢放、逐帧、最大差异定位和实际高度曲线，仅开发环境使用 |
-| `reference/sequence-review.html` | 在实际场景中验证抬起、旧档案归位与波浪的先后关系 |
-| `scripts/check-motion.mjs` | 波峰传播方向、25fps 连续性、抽取停留及帧率独立检查 |
+| `src/` | 开场、三维场景、循环阵列、模型查看器、检索与界面 |
+| `public/assets/` | 运行所需 GLB 模型 |
+| `public/archives/` | 40 份可下载的扩展演示档案 |
+| `public/fonts/` | 小米官方 MiSans 原版 WOFF2、版权与许可 |
+| `public/licenses/` | 其他第三方声明 |
+| `art/` | Blender 源文件、建模与审阅脚本 |
+| `scripts/` | 档案导出和行为检查 |
+| `reference/` | 开发用时间轴、光照与动效对照工具 |
+| `verification/` | 分阶段验证记录 |
+| `DESIGN.md` | 视觉与运动约束 |
 
-## Blender 资产
+默认字体为 MiSans，四份官方字体文件约 19.7 MB，按实际使用加载。三维场景需要支持 WebGL 的现代浏览器。首次加载包括字体与 GLB，加载后交互在本机运行。原片时间轴使用 160 个阵列位置；交互模式使用可循环的可见窗口和外围补位。
 
-模型通过本机 Blender MCP 创建，而后导出 GLB。包含聚合物外壳、内层散射板、双圆盘、金属螺钉、香槟色索引片、印字与模压刻线。原片时间轴使用 **160 个位置**；交互阵列使用固定的 **288 个循环位置**，支持上下与左右持续循环。抽出的档案使用完整细节与物理透射材质，实时编号标签随选中文件更新。
+## Blender 源文件
 
-重新建模时，在 Blender MCP 中执行 `art/build_archive.py`，再执行 `art/setup_studio.py`。脚本中的 `ROOT` 使用当前项目绝对路径；移动项目后需调整。
+- `art/rhine-archive.blend`：档案盒基础模型与审阅灯光。
+- `art/archive-assembly.blend`：支持六组拆解的档案盒。
+- `art/build_archive.py`、`art/build_assembly.py`：重新生成模型及 GLB。
+- `art/setup_studio.py`：资产审阅灯光与相机。
 
-## 复核入口
+脚本从自身位置确定项目目录，项目移动后无需修改本机绝对路径。可在 Blender 的脚本环境中通过 `runpy.run_path()` 执行相应脚本；通过 Blender MCP 调用时同样使用实际脚本路径。重新生成会更新对应模型输出，通常直接使用包内现有模型即可。
 
-以下入口使用同一套实时场景，方便复核时间轴：
+## 开发复核
 
-- `/reference/review.html`：原片与实时场景并排对照，可播放或逐帧步进。
-- `/?time=21.8`：直接从阵列进入前开始播放，方便检查波纹与抽取。
+```sh
+node scripts/check-motion.mjs
+node scripts/check-loop.mjs
+node scripts/check-appearance.mjs
+node scripts/check-assembly.mjs
+```
 
-- `/?scene=archive`：档案阵列。
-- `/?scene=detail`：档案详情。
-- `/?time=8&freeze=1`：认证界面，对应原片约 13 秒。
-- `/?time=16&freeze=1`：权限扫描，对应原片约 21 秒。
-- `/?time=20&freeze=1`：欢迎界面，对应原片约 25 秒。
-- `/?time=28&freeze=1`：档案抽取，对应原片约 33 秒。
-- `/?time=34&freeze=1`：档案特写，对应原片约 39 秒。
+常用入口：`/?scene=archive`、`/?scene=detail`、`/?time=28&freeze=1`。原片对照页位于 `/reference/review.html` 和 `/reference/boot-review.html` 等，仅用于开发验证。原始 PV 不随源码包分发；需要运行视频对照工具时，请自行准备对应参考视频。
 
-运动检查使用 `node scripts/check-motion.mjs`（Node 24）。
+## 内容与资源说明
 
-循环逻辑检查使用 `node scripts/check-loop.mjs`；`/reference/loop-review.html` 运行实际场景的循环、归位、坐标重置和原片时间轴回归检查。
+本项目是非官方的学习与交互复刻演示，与《明日方舟》及莱茵生命的官方制作方无隶属关系。原 PV、相关名称、标志和设定的权利归其各自权利人所有。参考片中没有展示的研究摘要、日期、记录等为扩展演示内容。
 
-## 内容与范围
+模型为重新制作，实时折射、景深、灯光及细节与原 PV 仍有差异。身份验证画面是演示状态机，不连接真实身份或业务服务。
 
-这是本地交互终端复刻。JOYCE MOORE 的认证流程是演示状态机，并没有连接真实身份、权限或业务服务。视频未展示的研究摘要、日期、项目记录和交互内容为扩展演示数据，不应当作官方设定或真实研究资料。
+MiSans 按其附带许可使用，版权与许可保留在 `public/fonts/`，设置页提供署名与许可入口；Rolling Number 的许可位于 `public/licenses/rolling-number.txt`。依赖各自遵循其原有许可。源码公开不改变这些第三方资源的权利。
 
-已按参考校准构图、字号、字距与主要动画阶段。三维资产为重新建模，实时折射、景深和光照与原片离线渲染仍存在差异；没有用图像差分证明逐像素一致。
-
-项目的 Three.js 引擎使生产 JavaScript 包约为 670 KB（gzip 约 176 KB）。首次加载还包括约 1.3 MB 的 GLB，后续运行不依赖网络资源。构建中的包体积提示属于这一已知成本。
-
-
-当前界面已嵌入小米官方 MiSans 原版 WOFF2（四个字重合计约 19.7 MB，按实际使用加载）。许可与版权位于 public/fonts，设置页提供字体署名与许可入口。未对字体进行转换或子集化。
-
-## 当前版本与光影对照
-
-主界面采用用户选定的原始基线动效：抬起与波浪同时开始，保留原有波峰和波谷。数字滚动、循环切换与独立模型查看器保留。
-
-开发环境打开 `/reference/light-review.html`，可对照原片四个关键帧，或把左侧切换为调整前。原片图片使用本地 `reference/motion/0690.jpg`、`0729.jpg`、`0787.jpg`、`0975.jpg`；不随生产构建打包。`/reference/wave-compare.html` 保留历史运动实验供回看，默认左侧为当前采用的原始基线。
-
-用户最新选择：主界面与独立查看器已恢复整体基线配色和光照。主档案编号 X-001 及悬停编号也加入数字滚动；光影对照页右侧为保留的实验版本。
+源码包包含运行代码、模型、Blender 源文件、说明与验证脚本；不包含 `node_modules`、本机缓存、Git 工作目录、原 PV 或视频录制中间文件。

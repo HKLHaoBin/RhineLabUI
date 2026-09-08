@@ -4,7 +4,6 @@ BUILD_ROOT = Path(__file__).resolve().parents[1]
 ROOT = BUILD_ROOT
 source = (ROOT/'art/build_archive.py').read_text(encoding='utf-8')
 prefix = source.split('# Convert text, bake modifiers')[0]
-prefix = prefix.replace("ROOT = 'E:/AIProject/RhineLabUI'", "ROOT = str(BUILD_ROOT)")
 prefix = prefix.replace("scene = bpy.data.scenes.new('Rhine_Archive_Work')", "scene = bpy.data.scenes.new('Rhine_Assembly_Work')")
 prefix = prefix.replace("if old != scene and old.name.startswith('Rhine_Archive_Asset'):", "if False:")
 prefix = prefix.replace("scene.name='Rhine_Archive_Asset'", "scene.name='Rhine_Assembly_Asset'")
