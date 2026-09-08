@@ -107,7 +107,7 @@ function readLocal<T>(key: string, fallback: T): T {
 }
 const saved = new Set<string>(readLocal<string[]>("rhine-saved", []));
 const prefs = readLocal("rhine-settings", {
-  sound: false,
+  sound: true,
   reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
   quality: true,
 });
