@@ -100,7 +100,10 @@ export class ArchiveScene {
   private highQuality = true;
   onSelect?: (index: number, cell?: ArchiveCell) => void;
   onHover?: (index: number | null) => void;
-  constructor(private container: HTMLElement) {
+  constructor(
+    private container: HTMLElement,
+    private readonly selectionPulse = selectionWave,
+  ) {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       alpha: false,
@@ -782,7 +785,7 @@ export class ArchiveScene {
         let ripple = 0;
         for (const p of this.pulses) {
           const distance = Math.hypot(row - p.row, (lane - p.lane) * 2.2);
-          ripple += selectionWave(distance, time - p.time);
+          ripple += this.selectionPulse(distance, time - p.time);
         }
         height += THREE.MathUtils.clamp(ripple, -0.6, 0.6) * this.pulseGain;
       }
