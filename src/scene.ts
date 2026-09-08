@@ -23,6 +23,7 @@ import {
   type ArchiveNavigation,
 } from "./archive-loop";
 import { labelMarkSvg } from "./brand";
+import { publicUrl } from "./public-url";
 import {
   archiveWave,
   extraction,
@@ -181,7 +182,7 @@ export class ArchiveScene {
     this.labelMark.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(labelMarkSvg)}`;
     await this.labelMark.decode();
     const gltf = await new GLTFLoader().loadAsync(
-      "/assets/archive-cassette.glb",
+      publicUrl("assets/archive-cassette.glb"),
     );
     gltf.scene.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
@@ -362,7 +363,7 @@ export class ArchiveScene {
   private assemblyTemplate?: Promise<THREE.Group>;
   async createAssemblyModel() {
     this.assemblyTemplate ??= new GLTFLoader()
-      .loadAsync("/assets/archive-assembly.glb")
+      .loadAsync(publicUrl("assets/archive-assembly.glb"))
       .then((gltf) => {
         gltf.scene.updateMatrixWorld(true);
         return gltf.scene;

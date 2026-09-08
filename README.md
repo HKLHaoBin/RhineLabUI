@@ -82,6 +82,34 @@ npm run preview
 
 生产文件输出到 `dist/`，可以交给静态 HTTP 服务托管。请通过服务地址访问，不要直接双击 `dist/index.html`。
 
+### 在线访问（GitHub Pages）
+
+本仓库通过 GitHub Actions 构建静态站点，并部署到 GitHub Pages。访问者不需要下载源码或在本机启动开发服务器。
+
+首次启用：
+
+1. 打开仓库 **Settings → Pages**，将 **Source** 设为 **GitHub Actions**。
+2. 推送到默认分支 `main`，或在 **Actions** 中手动运行 **Deploy GitHub Pages**。
+
+部署完成后的地址：
+
+- 项目站（仓库名不是 `用户名.github.io`）：`https://<owner>.github.io/<repo>/`，例如 `https://lbeilc.github.io/RhineLabUI/`
+- 用户 / 组织站（仓库名为 `<owner>.github.io`）：`https://<owner>.github.io/`
+
+构建会按仓库名自动加上子路径，让字体、GLB 模型和档案导出在 Pages 上也能加载。若站点挂在自定义域名的根路径，可在仓库 **Settings → Secrets and variables → Actions → Variables** 中设置 `PAGES_BASE_PATH` 为 `/`。
+
+本地可用同一套子路径做对照：
+
+```sh
+# Windows PowerShell
+$env:BASE_PATH="/RhineLabUI/"; npm run build; $env:BASE_PATH="/RhineLabUI/"; npm run preview
+
+# Unix
+BASE_PATH=/RhineLabUI/ npm run build && BASE_PATH=/RhineLabUI/ npm run preview
+```
+
+然后打开终端显示的地址，通常为 `http://127.0.0.1:4173/RhineLabUI/`。
+
 ## 操作说明
 
 ### 终端与档案
