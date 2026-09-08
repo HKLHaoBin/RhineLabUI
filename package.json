@@ -12,6 +12,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@kitlangton/rolling-number": "0.4.1",
     "three": "^0.183.0"
   },
   "devDependencies": {

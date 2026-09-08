@@ -27,6 +27,7 @@ import {
   archiveWave,
   extraction,
   selectionWave,
+  rippleEnvelope,
   settlingWave,
   damp,
   columnStrength,
@@ -80,6 +81,7 @@ export class ArchiveScene {
     returnY: number | null;
   }[] = [];
   private pulses: { row: number; lane: number; time: number }[] = [];
+  private pendingPulse: ArchiveCell | null = null;
   private selectedSlot = 76;
   private detail = 0;
   private targetDetail = 0;
@@ -103,6 +105,7 @@ export class ArchiveScene {
   constructor(
     private container: HTMLElement,
     private readonly selectionPulse = selectionWave,
+    private readonly deferSelectionPulse = true,
   ) {
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -422,6 +425,7 @@ export class ArchiveScene {
     };
   }
   setMode(mode: "hidden" | "archive" | "detail") {
+    if (mode !== "archive") this.pendingPulse = null;
     this.looping = mode !== "hidden";
     if (!this.looping) {
       const canonical = fileLocation(fileAtSlot(this.selectedSlot));
@@ -488,6 +492,10 @@ export class ArchiveScene {
       pulse.lane -= shift.lane;
       pulse.row -= shift.row;
     }
+    if (this.pendingPulse) {
+      this.pendingPulse.lane -= shift.lane;
+      this.pendingPulse.row -= shift.row;
+    }
   }
   select(index: number, navigation?: ArchiveNavigation) {
     this.lastInteraction = this.clock;
@@ -541,14 +549,15 @@ export class ArchiveScene {
       this.appearance.dispose(o.group);
       this.outgoing.splice(returning, 1);
     }
-    this.pulses.push({
-      row: cell.row,
-      lane: cell.lane,
-      time: this.clock,
-    });
-    this.pulses = this.pulses.slice(-6);
+    if (this.deferSelectionPulse) {
+      this.pendingPulse = this.looping ? { ...cell } : null;
+    } else this.emitPulse(cell);
     this.targetRotation = 0;
     this.drawLabel(index);
+  }
+  private emitPulse(cell: ArchiveCell) {
+    this.pulses.push({ ...cell, time: this.clock });
+    this.pulses = this.pulses.slice(-6);
   }
   private drawLabel(index: number) {
     if (!this.labelTexture) return;
@@ -785,7 +794,10 @@ export class ArchiveScene {
         let ripple = 0;
         for (const p of this.pulses) {
           const distance = Math.hypot(row - p.row, (lane - p.lane) * 2.2);
-          ripple += this.selectionPulse(distance, time - p.time);
+          const age = time - p.time;
+          ripple +=
+            this.selectionPulse(distance, age) *
+            (this.deferSelectionPulse ? rippleEnvelope(distance, age) : 1);
         }
         height += THREE.MathUtils.clamp(ripple, -0.6, 0.6) * this.pulseGain;
       }
@@ -815,7 +827,13 @@ export class ArchiveScene {
                 )
               ? 0
               : 0.4 * this.targetReveal,
-          this.reduced ? 35 : 4.2,
+          this.reduced
+            ? 35
+            : this.deferSelectionPulse &&
+                !this.targetDetail &&
+                this.lift.value < 0.4
+              ? 7.6
+              : 4.2,
           dt,
         );
       }
@@ -863,6 +881,26 @@ export class ArchiveScene {
         this.scene.remove(o.group);
         this.appearance.dispose(o.group);
         this.outgoing.splice(i, 1);
+      }
+    }
+    if (
+      this.pendingPulse &&
+      !cinematic &&
+      !this.targetDetail &&
+      this.targetReveal
+    ) {
+      const selectedY = selectedBase + this.lift.value;
+      const oldCardsLower = this.outgoing.every(
+        (old) =>
+          old.cell.lane !== selectedLane ||
+          Math.abs(old.cell.row - selectedRow) > 4 ||
+          old.group.position.y + 0.015 < selectedY,
+      );
+      // The new file causes the wave: finish most of its rise and let nearby
+      // outgoing files get below it before starting the outward pulse.
+      if (this.lift.value >= 0.35 && this.returnY === null && oldCardsLower) {
+        if (!this.reduced) this.emitPulse(this.pendingPulse);
+        this.pendingPulse = null;
       }
     }
     // Resolve returning copies before restoring their array instances, avoiding
@@ -1130,6 +1168,13 @@ export class ArchiveScene {
       triangles: this.renderer.info.render.triangles,
       archiveCount: this.positions.length,
       returningFiles: this.outgoing.length,
+      selectionPhase: this.pendingPulse
+        ? "lifting"
+        : this.pulses.length
+          ? "wave"
+          : "settled",
+      pendingPulse: this.pendingPulse ? { ...this.pendingPulse } : null,
+      pulses: this.pulses.map((pulse) => ({ ...pulse })),
       referenceTime: Math.round((this.scanTime + 5) * 100) / 100,
       selectedSlot: this.selectedSlot,
       selectedLane: Math.floor(this.selectedSlot / 32),

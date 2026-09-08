@@ -53,6 +53,14 @@ export function selectionWave(distance: number, age: number) {
   );
 }
 
+// The source stays still while the crest expands around it. Squaring the
+// positive cosine gives the ripple zero velocity at its leading/trailing edge.
+export function rippleEnvelope(distance: number, age: number) {
+  return (
+    smooth(distance / 2.5) * Math.max(0, Math.cos((distance - age * 8) * 0.58))
+  );
+}
+
 export function columnStrength(lane: number, focus: number, progress = 1) {
   const selected = 0.25 + 0.75 * bell(lane - focus, 0.55);
   return 1 + (selected - 1) * smooth(progress);

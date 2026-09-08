@@ -50,7 +50,8 @@ npm run dev
 | `DESIGN.md` | 视觉参考和设计记录 |
 | `verification/REPORT.md` | 验证记录与已知范围 |
 | `reference/review.html` | 同步原视频与实时场景，支持逐帧步进，仅开发环境使用 |
-| `reference/wave-compare.html` | 同步对比循环阵列基线与去除负向波谷后的版本，含慢放、逐帧、最大差异定位和实际高度曲线，仅开发环境使用 |
+| `reference/wave-compare.html` | 同步对比同时播放与先抬起后波浪，左侧可选原始基线或去波谷版本，含慢放、逐帧、最大差异定位和实际高度曲线，仅开发环境使用 |
+| `reference/sequence-review.html` | 在实际场景中验证抬起、旧档案归位与波浪的先后关系 |
 | `scripts/check-motion.mjs` | 波峰传播方向、25fps 连续性、抽取停留及帧率独立检查 |
 
 ## Blender 资产

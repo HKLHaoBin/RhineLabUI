@@ -1,4 +1,6 @@
+import "@kitlangton/rolling-number/styles.css";
 import "./style.css";
+import { createRollingNumber } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
 import { wrap, type ArchiveNavigation } from "./archive-loop";
@@ -41,7 +43,7 @@ $("#stage").innerHTML = `
     <div id="hover-label" class="hover-label"></div>
     <div class="archive-counter"><span class="tiny-label">ARCHIVE / SELECT</span><div><span id="selected-number">01</span><i>/</i><span class="count-total">12</span></div></div>
     <div class="archive-navigation"><button data-action="prev" aria-label="上一个档案">↑</button><div id="file-ticks" class="file-ticks"></div><button data-action="next" aria-label="下一个档案">↓</button></div>
-    <div class="column-navigation"><button data-action="column-prev" aria-label="上一列">←</button><div><span id="column-number">COLUMN 03 / 05</span><strong id="column-name">机构档案</strong></div><button data-action="column-next" aria-label="下一列">→</button></div>
+    <div class="column-navigation"><button data-action="column-prev" aria-label="上一列">←</button><div><span id="column-number">COLUMN <span id="column-index">03</span> / 05</span><strong id="column-name">机构档案</strong></div><button data-action="column-next" aria-label="下一列">→</button></div>
     <div class="archive-hint"><kbd>←</kbd> <kbd>→</kbd> 切换列 <span>／</span> <kbd>↑</kbd> <kbd>↓</kbd> 前后档案 <span>／</span> <kbd>ENTER</kbd> 读取</div>
   </section>
   <section id="detail-ui" class="detail-ui" aria-label="档案内容" hidden>
@@ -100,6 +102,21 @@ const prefs = readLocal("rhine-settings", {
   reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
   quality: true,
 });
+const numberOptions = {
+  locales: "en-US",
+  format: { minimumIntegerDigits: 2, useGrouping: false },
+  duration: 460,
+  motionBlur: true,
+  animated: !prefs.reduced,
+};
+const fileCounter = createRollingNumber($("#selected-number"), {
+  ...numberOptions,
+  value: 1,
+});
+const columnCounter = createRollingNumber($("#column-index"), {
+  ...numberOptions,
+  value: 3,
+});
 const audio = new TerminalAudio();
 audio.enabled = prefs.sound;
 let scene: ArchiveScene;
@@ -119,6 +136,8 @@ function savePrefs() {
   audio.enabled = prefs.sound;
   scene?.setReduced(prefs.reduced);
   scene?.setQuality(prefs.quality);
+  fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
+  columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
   $("#stage").classList.toggle("reduce-motion", prefs.reduced);
 }
 function fit() {
@@ -162,7 +181,7 @@ function select(index: number, navigation?: ArchiveNavigation) {
   if (mode === "detail") setMode("archive");
   activeTab = "overview";
   scene?.select(selected, navigation);
-  updateSelection();
+  updateSelection(navigation);
   audio.play("tick");
 }
 function stepFile(direction: number) {
@@ -178,7 +197,7 @@ function stepColumn(direction: number) {
   const next = wrap(lane + direction, archiveColumns.length);
   select(columnMemory[next], { axis: "lane", direction });
 }
-function updateSelection() {
+function updateSelection(navigation?: ArchiveNavigation) {
   const r = records[selected];
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
@@ -186,12 +205,29 @@ function updateSelection() {
   $("#selected-title").textContent = r.title;
   $("#selected-clearance").textContent = r.clearance;
   $("#archive-category").textContent = r.category;
-  $("#selected-number").textContent = String(
-    files.indexOf(selected) + 1,
-  ).padStart(2, "0");
+  const direction =
+    navigation && "axis" in navigation
+      ? navigation.direction > 0
+        ? "up"
+        : "down"
+      : "auto";
+  fileCounter.update({
+    value: files.indexOf(selected) + 1,
+    animated: !prefs.reduced && mode === "archive",
+    direction:
+      navigation && "axis" in navigation && navigation.axis === "row"
+        ? direction
+        : "auto",
+  });
   $(".count-total").textContent = String(files.length).padStart(2, "0");
-  $("#column-number").textContent =
-    `COLUMN ${String(lane + 1).padStart(2, "0")} / 05`;
+  columnCounter.update({
+    value: lane + 1,
+    animated: !prefs.reduced && mode === "archive",
+    direction:
+      navigation && "axis" in navigation && navigation.axis === "lane"
+        ? direction
+        : "auto",
+  });
   $("#column-name").textContent = archiveColumns[lane];
   $<HTMLButtonElement>('[data-action="column-prev"]').disabled = false;
   $<HTMLButtonElement>('[data-action="column-next"]').disabled = false;

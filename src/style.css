@@ -562,7 +562,7 @@ button {
   opacity: 0.25;
   cursor: default;
 }
-.column-navigation div {
+.column-navigation > div {
   display: grid;
   gap: 7px;
   min-width: 140px;
@@ -575,6 +575,13 @@ button {
 .column-navigation strong {
   font-size: 15px;
   font-weight: 400;
+}
+#selected-number,
+#column-index {
+  min-width: 2ch;
+  font-variant-numeric: tabular-nums;
+  --rn-blur: 0.35;
+  --rn-edge-fade: 0.08em;
 }
 .file-ticks button[hidden] {
   display: none;
