@@ -4,6 +4,23 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { decryptionFrame, DecryptionController } from "../src/decryption.ts";
 import { CardAppearance } from "../src/appearance.ts";
+import { frostedTransmissionLod, FROSTED_ROUGHNESS, CLEAR_ROUGHNESS } from "../src/glass-reveal.ts";
+
+// Frost occupies the same fraction of a cover across viewport sizes. Clearing
+// must never briefly increase its blur, and both original endpoints survive.
+for (const scale of [0.5, 1, 2]) {
+  const pixels = 400 * scale, width = 1920 * scale;
+  assert.ok(Math.abs(2 ** frostedTransmissionLod(pixels, width, FROSTED_ROUGHNESS) / pixels - 0.016) < 1e-10);
+  let prior = -Infinity;
+  for (let i = 0; i <= 100; i++) {
+    const roughness = CLEAR_ROUGHNESS + (FROSTED_ROUGHNESS - CLEAR_ROUGHNESS) * i / 100;
+    const lod = frostedTransmissionLod(pixels, width, roughness);
+    assert.ok(lod >= prior - 1e-10, "Clearing monotonically reduces blur");
+    prior = lod;
+    assert.equal(frostedTransmissionLod(pixels, width, roughness, 0), Math.log2(width) * roughness * (1.46 * 2 - 2));
+  }
+  assert.ok(Math.abs(frostedTransmissionLod(pixels, width, CLEAR_ROUGHNESS) - Math.log2(width) * CLEAR_ROUGHNESS * (1.46 * 2 - 2)) < 1e-10);
+}
 
 const length = (frame) => frame.intervals.reduce((n, [a, b]) => n + b - a, 0);
 let previous = 0;
@@ -73,10 +90,12 @@ appearance.prepare(group);
 appearance.apply(group, 1);
 const shader = {
   uniforms: {},
-  vertexShader: "#include <begin_vertex>",
-  fragmentShader: "#include <color_fragment>\n#include <roughnessmap_fragment>",
+  vertexShader: "#include <begin_vertex>\n#include <project_vertex>",
+  fragmentShader: "#include <transmission_pars_fragment>\n#include <color_fragment>\n#include <roughnessmap_fragment>",
 };
 mesh.material.onBeforeCompile(shader);
+assert.ok(shader.vertexShader.includes("vArchiveProjectedAxis = 1.85"));
+assert.ok(shader.fragmentShader.includes("float lod = archiveTransmissionLod(roughness, ior, transmissionSamplerSize);"));
 const part = new THREE.Group();
 group.add(part);
 part.add(mesh);

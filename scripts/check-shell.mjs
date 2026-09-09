@@ -15,47 +15,8 @@ async function load(path) {
   s.updateMatrixWorld(true);
   return s;
 }
-const [before, after] = await Promise.all([
-  load("../reference/shell-study/assembly-before.glb"),
-  load("../public/assets/archive-assembly.glb"),
-]);
-function interiors(s) {
-  const result = new Map();
-  s.traverse((m) => {
-    if (
-      !m.isMesh ||
-      !["optical-core", "optical-lenses"].includes(m.userData.assemblyPart)
-    )
-      return;
-    const p = m.geometry.attributes.position,
-      n = m.geometry.attributes.normal,
-      normalMatrix = new T.Matrix3().getNormalMatrix(m.matrixWorld);
-    const rows = [];
-    for (let i = 0; i < p.count; i++) {
-      const v = new T.Vector3()
-          .fromBufferAttribute(p, i)
-          .applyMatrix4(m.matrixWorld),
-        normal = new T.Vector3()
-          .fromBufferAttribute(n, i)
-          .applyNormalMatrix(normalMatrix);
-      rows.push(
-        [...v.toArray(), ...normal.toArray()]
-          .map((x) => x.toFixed(5))
-          .join(","),
-      );
-    }
-    result.set(
-      m.userData.assemblyPart + ":" + m.material.name.replace(/\.\d+$/, ""),
-      rows.sort(),
-    );
-  });
-  return result;
-}
-assert.deepEqual(
-  interiors(after),
-  interiors(before),
-  "Shell revision retains all interior positions and shading normals",
-);
+// Subsequent ring changes are covered by check-internal-optics.mjs.
+const after = await load("../public/assets/archive-assembly.glb");
 let patch,
   metal,
   engravingDepth = -Infinity;
@@ -113,7 +74,6 @@ console.log(
   JSON.stringify(
     {
       passed: true,
-      interiorGeometryAndNormals: "unchanged",
       screwRegions: 2,
       patchSize: patch.getSize(new T.Vector3()).toArray(),
       engravingDepth,

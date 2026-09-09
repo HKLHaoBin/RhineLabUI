@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { glassRevealGLSL } from "./glass-reveal.ts";
+import { glassRevealGLSL, frostedTransmissionGLSL, FROSTED_ROUGHNESS } from "./glass-reveal.ts";
 import { internalOpticsFragment } from "./internal-optics.ts";
 
 type Surface = THREE.MeshPhysicalMaterial;
@@ -38,22 +38,33 @@ export class CardAppearance {
           shader.fragmentShader;
         if (name === "Frosted_Polymer") {
           shader.vertexShader =
-            "varying float vArchiveHeight;\n" + shader.vertexShader;
+            "varying float vArchiveHeight;\nvarying vec2 vArchiveProjectedAxis;\n" + shader.vertexShader;
           shader.vertexShader = shader.vertexShader.replace(
             "#include <begin_vertex>",
             "#include <begin_vertex>\nvArchiveHeight = position.y / 3.7;",
           );
           shader.fragmentShader =
-            "varying float vArchiveHeight;\n" +
+            "varying float vArchiveHeight;\nvarying vec2 vArchiveProjectedAxis;\n" +
             glassRevealGLSL +
             shader.fragmentShader;
+          shader.vertexShader = shader.vertexShader.replace(
+            "#include <project_vertex>",
+            "#include <project_vertex>\nvArchiveProjectedAxis = 1.85 * vec2(projectionMatrix[0][0] * modelViewMatrix[1][0], projectionMatrix[1][1] * modelViewMatrix[1][1]) / max(0.0001, abs(mvPosition.z));",
+          );
+          shader.fragmentShader = shader.fragmentShader.replace(
+            "#include <transmission_pars_fragment>",
+            frostedTransmissionGLSL + "\n" + THREE.ShaderChunk.transmission_pars_fragment.replace(
+              "float lod = log2( transmissionSamplerSize.x ) * applyIorToRoughness( roughness, ior );",
+              "float lod = archiveTransmissionLod(roughness, ior, transmissionSamplerSize);",
+            ),
+          );
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <color_fragment>",
             "#include <color_fragment>\ndiffuseColor.rgb *= mix(mix(vec3(0.40, 0.30, 0.20), vec3(1.0, 0.98, 0.94), smoothstep(0.1, 1.0, vArchiveHeight)), vec3(1.0), archiveQuality);",
           );
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <roughnessmap_fragment>",
-            "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.28, 0.48, archiveQuality), 0.025, glassRevealAtHeight(archiveClarity, vArchiveHeight));",
+            `#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.28, ${FROSTED_ROUGHNESS}, archiveQuality), 0.025, glassRevealAtHeight(archiveClarity, vArchiveHeight));`,
           );
         } else if (!palette.low) {
           // Stable screen-space coverage adds internal geometry without an
