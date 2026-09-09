@@ -3,6 +3,7 @@
   height: auto;
   max-height: 950px;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   scrollbar-color: #aca18d transparent;
   scrollbar-width: thin;
 }
@@ -66,7 +67,7 @@
 .quality-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  column-gap: 36px;
+  column-gap: 32px;
 }
 .quality-control {
   display: flex;
