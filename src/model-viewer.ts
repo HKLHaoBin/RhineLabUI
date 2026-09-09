@@ -56,7 +56,13 @@ export class ModelViewer {
   private provider?: () => Promise<ModelSource>;
   isOpen = false;
 
-  constructor(parent: HTMLElement, onClose: () => void) {
+  constructor(
+    parent: HTMLElement,
+    onClose: () => void,
+    private onSound: (
+      sound: "explode" | "assemble" | "tick",
+    ) => void = () => {},
+  ) {
     this.onClose = onClose;
     this.root = document.createElement("section");
     this.root.className = "model-viewer";
@@ -131,9 +137,18 @@ export class ModelViewer {
       if (action === "close") this.close();
       if (action === "retry") void this.load();
       if (this.loading || !this.source) return;
-      if (action === "explode") this.setExploded(true);
-      if (action === "assemble") this.setExploded(false);
-      if (action === "reset") this.resetView();
+      if (action === "explode" && this.targetSpread !== 1) {
+        this.setExploded(true);
+        this.onSound("explode");
+      }
+      if (action === "assemble" && this.targetSpread !== 0) {
+        this.setExploded(false);
+        this.onSound("assemble");
+      }
+      if (action === "reset") {
+        this.resetView();
+        this.onSound("tick");
+      }
     });
     this.root.addEventListener("keydown", (event) => this.keydown(event));
   }
@@ -414,6 +429,7 @@ export class ModelViewer {
     if (event.key === "Home") {
       event.preventDefault();
       this.resetView();
+      this.onSound("tick");
       return;
     }
     if (["+", "=", "-"].includes(event.key)) {

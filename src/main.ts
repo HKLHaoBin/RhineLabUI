@@ -18,6 +18,7 @@ import {
   fileLocation,
 } from "./data";
 import { TerminalAudio } from "./audio";
+import { audioSettingsMarkup } from "./audio-settings";
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
@@ -116,9 +117,12 @@ function readLocal<T>(key: string, fallback: T): T {
   }
 }
 const saved = new Set<string>(readLocal<string[]>("rhine-saved", []));
-const storedPrefs = readLocal<Partial<{ sound: boolean; reduced: boolean; quality: boolean; rendering: RenderQuality }>>("rhine-settings", {});
+const storedPrefs = readLocal<Partial<{ sound: boolean; music: boolean; soundVolume: number; musicVolume: number; reduced: boolean; quality: boolean; rendering: RenderQuality }>>("rhine-settings", {});
 const prefs = {
-  sound: false,
+  sound: true,
+  music: storedPrefs.sound ?? true,
+  soundVolume: .55,
+  musicVolume: .5,
   reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
   quality: true,
   ...storedPrefs,
@@ -148,7 +152,8 @@ const selectionTitle = new ScrubTitle($("#selected-title"));
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
-audio.enabled = prefs.sound;
+audio.configure(prefs);
+let audioPreview = false, audioPreviewRequest = 0;
 let scene: ArchiveScene;
 let viewer: ModelViewer | undefined;
 const accessLog: { id: string; time: string }[] = [];
@@ -159,11 +164,14 @@ function recordAccess() {
     time: new Date().toLocaleTimeString("en-GB"),
   });
 }
-function savePrefs() {
+function saveAudioPrefs() {
   try {
     localStorage.setItem("rhine-settings", JSON.stringify(prefs));
   } catch {}
-  audio.enabled = prefs.sound;
+  audio.configure(prefs);
+}
+function savePrefs() {
+  saveAudioPrefs();
   if (prefs.reduced) {
     selectionTitle.reset();
     detailTransition.finish();
@@ -204,6 +212,12 @@ function setMode(next: Mode) {
   if (next !== "archive") selectionTitle.reset();
   if (next === "detail" && mode !== "detail") recordAccess();
   mode = next;
+  audio.setScene(next);
+  if (next !== "boot" && audioPreview) {
+    audioPreview = false;
+    audioPreviewRequest++;
+    audio.configure(prefs);
+  }
   $("#stage").dataset.mode = next;
   $("#boot").inert = next !== "boot";
   $("#boot").setAttribute("aria-hidden", String(next !== "boot"));
@@ -239,7 +253,8 @@ function select(index: number, navigation?: ArchiveNavigation) {
   activeTab = "overview";
   scene?.select(selected, navigation);
   updateSelection(navigation);
-  audio.play("tick");
+  const columnMove = navigation && "axis" in navigation && navigation.axis === "lane";
+  audio.play(columnMove ? "column" : "tick", columnMove ? navigation.direction * .45 : 0);
 }
 function stepFile(direction: number) {
   const files = columnFiles(fileLocation(selected).lane);
@@ -306,6 +321,21 @@ function updateSelection(navigation?: ArchiveNavigation) {
     );
   });
   $("#saved-count").textContent = String(saved.size).padStart(2, "0");
+}
+function replayBoot(forcePreview = false) {
+  if (!ready) return;
+  closeModal(() => replayBootAfterModal(forcePreview));
+}
+function replayBootAfterModal(forcePreview: boolean) {
+  bootStart = performance.now() / 1000 - 1.76;
+  frozenTime = null;
+  lastStep = "";
+  setMode(prefs.reduced && !forcePreview ? "archive" : "boot");
+  audio.restartBoot();
+  scene.select(0);
+  selected = 0;
+  updateSelection();
+  if (!forcePreview) audio.play("ui-tick");
 }
 function openFile() {
   if (!ready) return;
@@ -388,7 +418,7 @@ function setTab(tab: string, sound = true) {
   $("#tab-panel").scrollTop = 0;
   if (sound) {
     tabTransition.reveal($("#tab-panel"), prefs.reduced);
-    audio.play("tick");
+    audio.play("ui-tick");
   }
 }
 function notify(message: string) {
@@ -411,7 +441,7 @@ function openModal(kind: NonNullable<typeof modal>) {
   modal = kind;
   searchQuery = "";
   filter = "全部档案";
-  audio.play("open");
+  audio.play("page-open");
   renderModal();
 }
 function closeModal(afterClose?: () => void) {
@@ -421,7 +451,7 @@ function closeModal(afterClose?: () => void) {
   }
   if (modalClosing) return;
   modalClosing = true;
-  audio.play("back");
+  audio.play("page-close");
   modalTransition!.hide(prefs.reduced, () => {
     modal = null;
     modalClosing = false;
@@ -490,7 +520,7 @@ function updateQualitySummary() {
   summary.textContent = `实际渲染 ${canvas.width} × ${canvas.height} · ${prefs.rendering.antialias === "smaa" ? "SMAA" : "原始抗锯齿"} · 纹理 ${metrics.anisotropy ?? 1}×${metrics.limited ? " · 已达到缓冲上限" : ""}`;
 }
 function settingsMarkup() {
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><label><div><strong>INTERFACE SOUND</strong><span>界面反馈音</span></div><input type="checkbox" data-pref="sound" ${prefs.sound ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label></div>${qualityMarkup(prefs.rendering)}<div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="/fonts/MiSans-license.pdf" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list">${audioSettingsMarkup(prefs)}<label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label></div>${qualityMarkup(prefs.rendering)}<div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="/fonts/MiSans-license.pdf" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
 document.addEventListener("input", (e) => {
@@ -499,7 +529,12 @@ document.addEventListener("input", (e) => {
     const output = document.querySelector<HTMLOutputElement>(`[data-quality-output="${slider.dataset.quality}"]`);
     if (output) output.value = `${slider.value}%`;
   }
-
+  const volume = e.target as HTMLInputElement;
+  if (volume.dataset.volume === "musicVolume" || volume.dataset.volume === "soundVolume") {
+    prefs[volume.dataset.volume] = Number(volume.value) / 100;
+    volume.closest("label")?.querySelector("output")?.replaceChildren(`${volume.value}%`);
+    saveAudioPrefs();
+  }
   if ((e.target as HTMLElement).id === "archive-search") {
     searchQuery = (e.target as HTMLInputElement).value;
     renderResults();
@@ -517,8 +552,8 @@ document.addEventListener("change", (e) => {
   }
   if (el.dataset.pref) {
     const key = el.dataset.pref;
-    if (key === "sound" || key === "reduced" || key === "quality") prefs[key] = el.checked;
-    savePrefs();
+    if (key === "sound" || key === "music" || key === "reduced" || key === "quality") prefs[key] = el.checked;
+    if (key === "sound" || key === "music") saveAudioPrefs(); else savePrefs();
     audio.play("confirm");
   }
 });
@@ -556,6 +591,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   const action = el.dataset.action;
+  if (action === "sound-preview") audio.play("confirm");
   if (action === "skip") {
     setMode("archive");
     audio.play("confirm");
@@ -566,7 +602,8 @@ document.addEventListener("click", (e) => {
   if (action === "column-next") stepColumn(1);
   if (action === "open") openFile();
   if (action === "model-viewer" && mode === "detail") {
-    viewer ??= new ModelViewer($("#stage"), () => audio.play("back"));
+    viewer ??= new ModelViewer($("#stage"), () => { audio.setScene(mode); audio.play("page-close"); }, (sound) => audio.play(sound === "tick" ? "ui-tick" : sound));
+    audio.setScene("viewer");
     viewer.setQuality(prefs.rendering);
     viewer.open(
       records[selected].id,
@@ -574,7 +611,7 @@ document.addEventListener("click", (e) => {
       () => scene.createAssemblyModel(),
       prefs.reduced,
     );
-    audio.play("open");
+    audio.play("page-open");
   }
   if (action === "back") {
     setMode("archive");
@@ -591,16 +628,7 @@ document.addEventListener("click", (e) => {
     renderModal();
   }
   if (action === "replay" || action === "restart") {
-    closeModal(() => {
-      bootStart = performance.now() / 1000 - 1.76;
-      frozenTime = null;
-      lastStep = "";
-      setMode(prefs.reduced ? "archive" : "boot");
-      scene.select(0);
-      selected = 0;
-      updateSelection();
-      audio.play("back");
-    });
+    replayBoot();
   }
   if (action === "fullscreen") {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -619,8 +647,7 @@ document.addEventListener("keydown", (e) => {
   const typing = e.target instanceof HTMLInputElement;
   if (e.key === "Escape") {
     if (modal) closeModal();
-    else if (mode === "detail") setMode("archive");
-    else if (mode === "boot" && ready) setMode("archive");
+    else if (mode === "detail" || (mode === "boot" && ready)) { const sound = mode === "detail" ? "back" : "ui-tick"; setMode("archive"); audio.play(sound); }
     return;
   }
   if (modal && e.key === "Tab") {
@@ -691,6 +718,7 @@ const ease = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 function bootFrame(t: number) {
+  audio.updateBoot(t, frozenTime !== null);
   const motion = bootSequence.update(t);
   let step: string = motion.step;
   let caption =
@@ -720,8 +748,6 @@ function bootFrame(t: number) {
   if (step !== lastStep) {
     $("#stage").dataset.boot = step;
     lastStep = step;
-    if (["auth", "scan", "select"].includes(step))
-      audio.play(step === "scan" ? "confirm" : "tick");
   }
   $("#cinema-caption").textContent = caption;
   $(".file-title").firstChild!.textContent =
@@ -867,6 +893,22 @@ void start();
 // Deterministic review controls: the running application, never a video surrogate.
 Object.assign(window, {
   rhine: {
+    // The review button supplies a real user activation. Preferences stay local to this preview.
+    playBootPreview: async (music = false) => {
+      if (!ready || !navigator.userActivation.isActive) return false;
+      const request = ++audioPreviewRequest;
+      audioPreview = true;
+      audio.configure({ ...prefs, sound: true, music });
+      const unlocked = await audio.unlock();
+      if (request !== audioPreviewRequest) return false;
+      if (!unlocked) {
+        audioPreview = false;
+        audio.configure(prefs);
+        return false;
+      }
+      replayBoot(true);
+      return true;
+    },
     seek: (t: number) => {
       setMode("boot");
       bootStart = performance.now() / 1000 - t;
@@ -879,8 +921,12 @@ Object.assign(window, {
       ...scene?.getStats(),
       fps: Math.round(fps),
       mode,
+      ready,
+      bootTime: mode === "boot" ? (frozenTime ?? performance.now() / 1000 - bootStart) + 5 : null,
       selected: records[selected].id,
       saved: [...saved],
+      audio: audio.stats(),
     }),
   },
 });
+if (import.meta.hot) import.meta.hot.dispose(() => audio.dispose());
