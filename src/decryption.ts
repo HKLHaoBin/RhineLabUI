@@ -51,6 +51,16 @@ const GROW: readonly Knot[] = [
   [35.6, 0.973],
   [36.04, 1],
 ];
+// The clearing front starts when the line finishes retracting. At 39.0 s
+// the upper half is already readable; height-dependent roughness moves with it.
+const REVEAL: readonly Knot[] = [
+  [38.84, 0],
+  [38.92, 0.28],
+  [39.0, 0.51],
+  [39.16, 0.74],
+  [39.32, 0.94],
+  [39.56, 1],
+];
 const RETRACT: readonly Knot[] = [
   [37.72, 1],
   [37.88, 0.72],
@@ -90,7 +100,7 @@ export function decryptionFrame(time: number) {
     point: smooth((time - 38.58) / 0.2) * (1 - smooth((time - 39.08) / 0.22)),
     label: smooth((time - 34.32) / 0.36) * (1 - smooth((time - 37.68) / 0.24)),
     labelValue: smooth((time - 35.64) / 0.56),
-    clarity: smooth((time - 39.04) / 0.52),
+    clarity: sampleCurve(REVEAL, time),
     phase:
       time < 34.24
         ? "waiting"
@@ -100,11 +110,9 @@ export function decryptionFrame(time: number) {
             ? "connected"
             : time < 38.84
               ? "retracting"
-              : time < 39.04
-                ? "verified"
-                : time < DECRYPTION_END
-                  ? "revealing"
-                  : "clear",
+              : time < DECRYPTION_END
+                ? "revealing"
+                : "clear",
   };
 }
 export type DecryptionFrame = ReturnType<typeof decryptionFrame>;
@@ -144,7 +152,9 @@ export class DecryptionController {
       return;
     }
     if (!this.active) {
-      this.clarity = reduced ? 0 : this.clarity * Math.exp(-Math.max(0, dt) * 9);
+      this.clarity = reduced
+        ? 0
+        : this.clarity * Math.exp(-Math.max(0, dt) * 9);
       if (this.clarity < 0.0001) this.clarity = 0;
       this.frame = decryptionFrame(-1);
       return;
@@ -154,10 +164,11 @@ export class DecryptionController {
       return;
     }
     if (this.elapsed === null && ready) this.elapsed = 0;
-    else if (this.elapsed !== null) this.elapsed = Math.min(
-      this.elapsed + Math.max(0, dt),
-      (DECRYPTION_END - DECRYPTION_START) / INTERACTIVE_RATE,
-    );
+    else if (this.elapsed !== null)
+      this.elapsed = Math.min(
+        this.elapsed + Math.max(0, dt),
+        (DECRYPTION_END - DECRYPTION_START) / INTERACTIVE_RATE,
+      );
     if (this.elapsed !== null) {
       this.frame = decryptionFrame(
         DECRYPTION_START + this.elapsed * INTERACTIVE_RATE,

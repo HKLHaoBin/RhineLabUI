@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { glassRevealGLSL } from "./glass-reveal.ts";
 import { internalOpticsFragment } from "./internal-optics.ts";
 
 type Surface = THREE.MeshPhysicalMaterial;
@@ -23,7 +24,8 @@ export class CardAppearance {
       const amount = { value: 0 };
       const clarity = { value: 0 };
       mesh.material = mat;
-      if (mat.userData.opticalOrder) mesh.renderOrder = mat.userData.opticalOrder;
+      if (mat.userData.opticalOrder)
+        mesh.renderOrder = mat.userData.opticalOrder;
       mesh.userData.appearance = amount;
       mesh.userData.glassClarity = clarity;
       mat.onBeforeCompile = (shader) => {
@@ -42,14 +44,16 @@ export class CardAppearance {
             "#include <begin_vertex>\nvArchiveHeight = position.y / 3.7;",
           );
           shader.fragmentShader =
-            "varying float vArchiveHeight;\n" + shader.fragmentShader;
+            "varying float vArchiveHeight;\n" +
+            glassRevealGLSL +
+            shader.fragmentShader;
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <color_fragment>",
             "#include <color_fragment>\ndiffuseColor.rgb *= mix(mix(vec3(0.40, 0.30, 0.20), vec3(1.0, 0.98, 0.94), smoothstep(0.1, 1.0, vArchiveHeight)), vec3(1.0), archiveQuality);",
           );
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <roughnessmap_fragment>",
-            "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.28, mix(0.48, 0.035, smoothstep(0.36, 0.68, vArchiveHeight)), archiveQuality), 0.025, archiveClarity);",
+            "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.28, 0.48, archiveQuality), 0.025, glassRevealAtHeight(archiveClarity, vArchiveHeight));",
           );
         } else if (!palette.low) {
           // Stable screen-space coverage adds internal geometry without an

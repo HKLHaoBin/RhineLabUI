@@ -27,7 +27,7 @@ for (let t = 37.72; t < 38.84; t += 0.001) {
   previous = current;
 }
 assert.equal(length(decryptionFrame(38.84)), 0);
-assert.equal(decryptionFrame(39.04).clarity, 0);
+assert.equal(decryptionFrame(38.84).clarity, 0);
 assert.equal(decryptionFrame(39.56).clarity, 1);
 assert.ok(length(decryptionFrame(34.64)) > 0.5, "Joining is eased, not linear");
 const a = new DecryptionController();

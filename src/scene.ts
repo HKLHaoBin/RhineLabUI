@@ -226,20 +226,6 @@ export class ArchiveScene {
         mat.ior = 1.46;
         mat.attenuationColor = new THREE.Color("#eee6df");
         mat.attenuationDistance = 2;
-        mat.onBeforeCompile = (shader) => {
-          shader.vertexShader =
-            "varying float vArchiveHeight;\n" + shader.vertexShader;
-          shader.vertexShader = shader.vertexShader.replace(
-            "#include <begin_vertex>",
-            "#include <begin_vertex>\nvArchiveHeight = position.y / 3.7;",
-          );
-          shader.fragmentShader =
-            "varying float vArchiveHeight;\n" + shader.fragmentShader;
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <roughnessmap_fragment>",
-            "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.48, 0.035, smoothstep(0.36, 0.68, vArchiveHeight));",
-          );
-        };
       }
       if (name === "Internal_Ceramic") {
         mat.color.set(this.lightingLook === "refined" ? "#c4baae" : "#c7beb6");
@@ -270,14 +256,6 @@ export class ArchiveScene {
         mat.roughness = 0.26;
         mat.metalness = 0.08;
       }
-      if (name === "Amber_Lightguide") {
-        // The guide sits only 0.002 ahead of the cover. At the long camera
-        // distance that gap can quantize to one depth value at oblique angles.
-        // Bias this narrow overlay only; retain the camera and global AO depth.
-        mat.polygonOffset = true;
-        mat.polygonOffsetFactor = -1;
-        mat.polygonOffsetUnits = -2;
-      }
       configureInternalOptics(name, mat);
       if (name === "Carbon_Ink") continue;
       const selectedMesh = new THREE.Mesh(geom, mat);
@@ -292,7 +270,7 @@ export class ArchiveScene {
           "Frosted_Polymer",
           "Ivory_Edges",
           "Titanium_Fasteners",
-          "Champagne_Index",
+          "Index_Inlay",
           "Optical_Diffuser",
         ].includes(name)
       ) {
@@ -337,7 +315,7 @@ export class ArchiveScene {
         );
         arrayMat.roughness = 0.38;
       }
-      if (name === "Champagne_Index") {
+      if (name === "Index_Inlay") {
         arrayMat.color.set("#e4d6c5");
         arrayMat.metalness = 0.05;
       }

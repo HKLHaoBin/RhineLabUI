@@ -19,18 +19,9 @@ def face_point(px,py):return ((px-432)/1022*5-2.5,(1018-py)/676*3.7)
 def mould(name,pixels,depth=-.074,radius=.004,mat=core):
     return channel(name,[face_point(x,y) for x,y in pixels],depth,radius,mat)
 
-top=[(435,513),(455,513),(482,483),(482,413),(500,393),(577,393),
-     (598,382),(797,382),(820,393),(1019,393),(1038,404),(1077,404),
-     (1081,400),(1075,393),(1050,393),(1030,380),(1022,380),(1017,385),
-     (1019,393),(1149,393),(1149,400),(1153,404),(1182,404),(1209,385),
-     (1210,380),(1206,377),(1199,380),(1184,393),(1325,393),(1353,376),(1423,376)]
-mould('Moulded circuit channel seat',top,-.077,.0048,core)
-mould('Moulded circuit channel highlight',[(x,y-2.4) for x,y in top],-.081,.0038,optical_edge)
-mould('Moulded circuit channel left return',[(463,444),(460,451),(454,450),(452,443),(452,403),(477,379),(527,379),(534,375),(534,368),(529,363),(516,363)],-.076,.005,core)
-perimeter=[(519,602),(519,421),(535,404),(1394,404),(1410,421),(1410,497),
-           (1423,526),(1423,902),(1360,977),(538,977),(522,963),(522,786)]
-mould('Moulded inner perimeter seat',perimeter,-.073,.0045,core)
-mould('Moulded inner perimeter lip',[(x+2,y+3) for x,y in perimeter],-.078,.0045,optical_edge)
+shell_script=Path(ROOT)/'art/shell_reference_details.py'
+exec(compile(shell_script.read_text(encoding='utf-8'),str(shell_script),'exec'))
+
 # Fine, lightly recessed rectangular backing routes, beneath the ring structures.
 for route in [[(681,470),(681,899),(1061,899),(1061,821),(1310,821),(1310,464),(1028,464),(1028,406)]]:
     mould('Information substrate fine route',route,.014,.0018,core)

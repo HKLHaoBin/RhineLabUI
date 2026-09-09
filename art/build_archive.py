@@ -105,16 +105,11 @@ def channel(name, points, depth, radius, mat):
     obj=bpy.data.objects.new(name,curve);scene.collection.objects.link(obj);curve.materials.append(mat)
     return obj
 
-cube('Front frosted optical cover',(0,-.095,1.85),(5,.016,3.7),shell,.007)
+front_cover=cube('Front frosted optical cover',(0,-.095,1.85),(5,.016,3.7),shell,.007)
 cube('Rear translucent carrier',(0,.055,1.85),(4.97,.02,3.68),edge,.009)
 cube('Information substrate',(0,.025,1.86),(4.80,.012,3.47),diffuser,.006)
 for z in [.028,3.672]:cube('Polished perimeter rail',(0,-.021,z),(4.95,.155,.034),edge,.009)
 for x in [-2.476,2.476]:cube('Polished perimeter rail',(x,-.021,1.85),(.034,.155,3.66),edge,.009)
-# A fine front rebate catches the same continuous rim highlight as the reference.
-for z in [.055,3.645]:
-    cube('Polished perimeter rail front rebate',(0,-.101,z),(4.91,.012,.014),edge,.004)
-for x in [-2.448,2.448]:
-    cube('Polished perimeter rail front rebate',(x,-.101,1.85),(.014,.012,3.59),edge,.004)
 # Wide optical cavities sit BEHIND the frosted cover. Their lenticular profiles
 # are shallow; no torus protrudes from the exterior face.
 for x,z,r in [(-.44,1.92,.79),(1.13,2.48,.435)]:
@@ -138,21 +133,6 @@ for x,z,r in [(-.44,1.92,.79),(1.13,2.48,.435)]:
         annular_profile('Embedded amber annulus',x,z,[
             (r-.170,-.047),(r-.070,-.047),(r-.067,-.060),
             (r-.077,-.071),(r-.156,-.071),(r-.170,-.060)],gold)
-for x in [-2.34,2.34]:
-    for z in [.17,3.53]:
-        annular_profile('Countersunk washer',x,z,[(.035,-.093),(.060,-.093),(.062,-.102),(.053,-.110),(.040,-.110),(.035,-.102)],edge,32)
-        bpy.ops.mesh.primitive_cylinder_add(vertices=24,radius=.038,depth=.022,location=(x,-.105,z),rotation=(math.pi/2,0,0))
-        o=bpy.context.object;o.name='Machined screw';o.data.materials.append(metal)
-        bevel=o.modifiers.new('Head chamfer','BEVEL');bevel.width=.004;bevel.segments=2
-        bpy.ops.object.modifier_apply(modifier=bevel.name)
-        # Actual recessed drive, with a visible metal floor under the slot.
-        cut=cube('Temporary drive cutter',(x,-.117,z),(.053,.017,.010),core,.0015)
-        cut.rotation_euler.y=-.65
-        bpy.context.view_layer.objects.active=o
-        mod=o.modifiers.new('Recessed slotted drive','BOOLEAN');mod.operation='DIFFERENCE';mod.object=cut
-        bpy.ops.object.modifier_apply(modifier=mod.name);bpy.data.objects.remove(cut,do_unlink=True)
-        o.modifiers.new('Fastener normals','WEIGHTED_NORMAL')
-cube('Index tab',(-2.08,-.081,3.48),(.26,.1,.29),gold,.005)
 cube('Serial label',(-1.36,-.099,3.04),(.99,.02,.41),paper,.003)
 cube('Label top rule',(-1.36,-.116,3.23),(.98,.004,.008),ink,0)
 cube('Label bottom rule',(-1.36,-.116,2.847),(.98,.004,.005),ink,0)
@@ -185,11 +165,6 @@ for x in [-2.420,2.420]:
 # Small raised pads under the diagonal calibration vents.
 for i in range(16):
     cube('Moulded vent footing',(1.04+i*.054,-.071,.435),(.015,.014,.018),optical_edge,.004)
-
-# White, broad end caps and a warm light guide along the selected spine.
-cube('Ivory spine cap',(-2.46,-.02,1.85),(.055,.155,3.68),edge,.012)
-guide=material('Amber_Lightguide',(.98,.68,.31),.28,.05,.25)
-cube('Amber light guide',(-2.35,-.095,1.85),(.12,.018,3.60),guide,.01)
 
 detail_script=Path(ROOT)/'art/clear_reference_details.py'
 exec(compile(detail_script.read_text(encoding='utf-8-sig'),str(detail_script),'exec'))
