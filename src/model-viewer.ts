@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createArchiveLighting } from "./archive-lighting";
 import { damp } from "./motion";
+import { ViewerCameraMotion } from "./viewer-camera";
 
 const PARTS = [
   { id: "fasteners", label: "紧固件", en: "FASTENERS", depth: 2.75 },
@@ -24,6 +25,8 @@ export class ModelViewer {
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.3, 120);
+  private controlCamera = this.camera.clone();
+  private cameraMotion = new ViewerCameraMotion(this.camera);
   private controls: OrbitControls;
   private source?: ModelSource;
   private groups = new Map<string, THREE.Group>();
@@ -88,9 +91,12 @@ export class ModelViewer {
     // scene's light room here so this renderer receives its actual illumination.
     createArchiveLighting(this.renderer, this.scene);
     this.camera.position.copy(this.initialCamera);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.085;
+    this.controlCamera.copy(this.camera);
+    this.controls = new OrbitControls(
+      this.controlCamera,
+      this.renderer.domElement,
+    );
+    this.controls.enableDamping = false;
     this.controls.rotateSpeed = 0.65;
     this.controls.zoomSpeed = 0.7;
     this.controls.panSpeed = 0.7;
@@ -100,6 +106,8 @@ export class ModelViewer {
     this.controls.screenSpacePanning = true;
     this.controls.enabled = false;
     this.controls.update();
+    this.cameraMotion.snap(this.controlCamera, this.controls.target);
+    this.controls.addEventListener("start", () => this.interruptReset());
     this.root.addEventListener("click", (event) => {
       if (this.closing) return;
       const action = (event.target as HTMLElement).closest<HTMLElement>(
@@ -143,7 +151,7 @@ export class ModelViewer {
     this.targetSpread = 0;
     this.lastTime = 0;
     this.root.dataset.exploded = "false";
-    this.resetView();
+    this.resetView(false);
     this.resize();
     this.renderer.domElement.focus({ preventScroll: true });
     this.enter();
@@ -339,17 +347,23 @@ export class ModelViewer {
       this.root.querySelector(".viewer-state")!.textContent = value;
     }
   }
-  private resetView() {
+  private resetView(animated = true) {
     this.controls.enabled = false;
     this.controls.enableDamping = false;
     this.controls.update();
     this.controls.target.set(0, 0, 0);
-    this.camera.position.copy(this.initialCamera);
+    this.controlCamera.position.copy(this.initialCamera);
     this.controls.enableDamping = false;
     this.controls.update();
-    this.controls.enableDamping = !this.reduced;
+    if (animated && !this.reduced) this.cameraMotion.reset();
+    else this.cameraMotion.snap(this.controlCamera, this.controls.target);
     this.controls.enabled =
       this.isOpen && !this.loading && Boolean(this.source);
+  }
+  private interruptReset() {
+    if (!this.cameraMotion.resetting) return;
+    this.cameraMotion.interruptReset(this.controlCamera, this.controls.target);
+    this.controls.update();
   }
   private keydown(event: KeyboardEvent) {
     event.stopPropagation();
@@ -388,13 +402,16 @@ export class ModelViewer {
     }
     if (["+", "=", "-"].includes(event.key)) {
       event.preventDefault();
-      const distance = this.camera.position.distanceTo(this.controls.target);
+      this.interruptReset();
+      const distance = this.controlCamera.position.distanceTo(
+        this.controls.target,
+      );
       const next = THREE.MathUtils.clamp(
         distance * (event.key === "-" ? 1.12 : 1 / 1.12),
         5,
         28,
       );
-      this.camera.position
+      this.controlCamera.position
         .sub(this.controls.target)
         .multiplyScalar(next / distance)
         .add(this.controls.target);
@@ -405,6 +422,7 @@ export class ModelViewer {
       ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
     ) {
       event.preventDefault();
+      this.interruptReset();
       const right = new THREE.Vector3().setFromMatrixColumn(
         this.camera.matrix,
         0,
@@ -412,13 +430,19 @@ export class ModelViewer {
       const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
       const delta = new THREE.Vector3();
       const step =
-        this.camera.position.distanceTo(this.controls.target) * 0.025;
+        this.controlCamera.position.distanceTo(this.controls.target) * 0.025;
       if (event.key === "ArrowLeft") delta.addScaledVector(right, -step);
       if (event.key === "ArrowRight") delta.addScaledVector(right, step);
       if (event.key === "ArrowUp") delta.addScaledVector(up, step);
       if (event.key === "ArrowDown") delta.addScaledVector(up, -step);
-      this.camera.position.add(delta);
+      // Clamp the requested focus before moving the camera by the same amount.
+      // This preserves orbit radius at the panning limit.
+      const previous = this.controls.target.clone();
       this.controls.target.add(delta);
+      this.controls.target.clampLength(0, this.controls.maxTargetRadius);
+      this.controlCamera.position.add(
+        this.controls.target.clone().sub(previous),
+      );
       this.controls.update();
     }
   }
@@ -434,6 +458,8 @@ export class ModelViewer {
     this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.controlCamera.aspect = this.camera.aspect;
+    this.controlCamera.updateProjectionMatrix();
   }
 
   update(time: number) {
@@ -454,6 +480,12 @@ export class ModelViewer {
       }
     }
     this.controls.update();
+    this.cameraMotion.update(
+      this.controlCamera,
+      this.controls.target,
+      dt,
+      this.reduced,
+    );
     // Match the detail scene's gentle haze without washing out the object as
     // the user zooms. The assembled model is centered on the world origin.
     const fog = this.scene.fog as THREE.Fog;
@@ -465,8 +497,14 @@ export class ModelViewer {
       ready: Boolean(this.source),
       spread: this.spread.value,
       target: this.targetSpread,
-      distance: this.camera.position.distanceTo(this.controls.target),
-      targetPosition: this.controls.target.toArray(),
+      distance: this.camera.position.distanceTo(this.cameraMotion.focus),
+      targetPosition: this.cameraMotion.focus.toArray(),
+      requestedTarget: this.controls.target.toArray(),
+      requestedDistance: this.controlCamera.position.distanceTo(
+        this.controls.target,
+      ),
+      cameraPosition: this.camera.position.toArray(),
+      resetting: this.cameraMotion.resetting,
       azimuth: this.controls.getAzimuthalAngle(),
       polar: this.controls.getPolarAngle(),
       parts: [...this.groups].map(([id, group]) => ({

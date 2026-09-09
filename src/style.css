@@ -122,31 +122,50 @@ button {
 .brand {
   position: absolute;
   left: 59px;
-  top: 112px;
+  top: 114px;
   z-index: 5;
   line-height: 1;
   user-select: none;
+  width: 270px;
+  white-space: nowrap;
 }
 .brand h1 {
-  font-size: 48px;
-  letter-spacing: 0.1px;
-  line-height: 51px;
+  font-size: 44px;
+  letter-spacing: 2.5px;
+  line-height: 48px;
   margin: 0;
   font-weight: 750;
 }
 .brand > div {
-  font-size: 20px;
+  font-size: 19px;
   line-height: 23px;
-  letter-spacing: -0.05px;
+  letter-spacing: 0.65px;
+  font-weight: 600;
 }
 .brand p {
   margin: 0;
-  font-size: 38px;
+  font-size: 35px;
   line-height: 40px;
-  word-spacing: 10px;
+  letter-spacing: 0;
+  word-spacing: 0;
+  display: flex;
+  justify-content: space-between;
 }
 .brand p b {
   font-weight: 750;
+  letter-spacing: 3px;
+}
+.brand-analysis {
+  position: relative;
+  display: block;
+  width: 189px;
+  height: 40px;
+}
+.brand-analysis > span {
+  position: absolute;
+  top: 0;
+  letter-spacing: 0;
+  font-kerning: none;
 }
 .powered {
   position: absolute;
@@ -1569,13 +1588,6 @@ button {
   opacity: 0.88;
   text-shadow: 0 1px 5px #4a4740;
 }
-.brand h1 {
-  font-size: 50px;
-}
-.brand p {
-  font-size: 40px;
-  word-spacing: 8px;
-}
 .powered {
   font-size: 19px;
 }
@@ -1585,9 +1597,6 @@ button {
 }
 .archive-callout {
   top: 471px;
-}
-.brand h1 {
-  transform: translateY(2px);
 }
 .export-button {
   color: inherit;
