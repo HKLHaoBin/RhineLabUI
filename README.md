@@ -125,7 +125,8 @@ npm run preview
 | [`src/boot.ts`](src/boot.ts)、[`src/boot-motion.ts`](src/boot-motion.ts) | 开场界面与逐帧时间轴 |
 | [`src/scene.ts`](src/scene.ts)、[`src/archive-loop.ts`](src/archive-loop.ts) | Three.js 场景、循环阵列、抽取与归位 |
 | [`src/model-viewer.ts`](src/model-viewer.ts) | 独立模型查看器与拆解动画 |
-| [`src/data.ts`](src/data.ts) | 五类、40 份扩展演示档案的数据 |
+| [`content/archives.json`](content/archives.json) | 页面与下载共用的五类、40 份档案数据 |
+| [`src/data.ts`](src/data.ts) | 档案类型与阵列位置映射 |
 | [`public/assets/`](public/assets/) | 运行所需的 GLB 模型 |
 | [`public/archives/`](public/archives/) | 导出的档案文本；启动和构建前自动生成 |
 | [`art/`](art/) | Blender 源文件、建模与审阅脚本 |
@@ -138,7 +139,7 @@ npm run preview
 
 ### 修改与复核
 
-修改档案内容可从 `src/data.ts` 入手。`npm run dev` 与 `npm run build` 会自动更新 `public/archives/` 中的文本导出。
+修改档案内容从 [`content/archives.json`](content/archives.json) 入手，字段与操作步骤见 [档案修改说明](content/README.md)。`npm run dev` 与 `npm run build` 会先校验数据，再更新 `public/archives/` 中的文本导出；开发过程中修改数据后，可执行 `npm run export:archives` 同步下载文件。`npm run check:content` 检查数据规则与导出一致性。
 
 ```sh
 node scripts/check-motion.mjs
