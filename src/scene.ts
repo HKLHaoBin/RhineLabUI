@@ -185,11 +185,11 @@ export class ArchiveScene {
     this.composer.addPass(new OutputPass());
     this.bindPointer();
   }
-  async load() {
+  async load(assetUrl = "/assets/archive-cassette.glb") {
     this.labelMark.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(labelMarkSvg)}`;
     await this.labelMark.decode();
     const gltf = await new GLTFLoader().loadAsync(
-      "/assets/archive-cassette.glb",
+      assetUrl,
     );
     gltf.scene.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
