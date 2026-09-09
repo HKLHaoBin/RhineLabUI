@@ -1,5 +1,6 @@
 // Original footage is 25 fps. App time zero corresponds to video time 5 s.
 // Discrete editorial cuts use frame numbers; spatial motion uses continuous time.
+import { brandTrack, companyTrack, scanTrack, track } from "./boot-tracks";
 export const progress = (t: number, a: number, b: number) =>
   Math.max(0, Math.min(1, (t - a) / (b - a)));
 export const smooth = (p: number) => p * p * (3 - 2 * p);
@@ -42,7 +43,8 @@ export function bootMotion(appTime: number) {
       auth += ".".repeat(Math.min(3, 1 + Math.floor((f - 449) / 4)));
     if (at(f, [479, 485, 486])) auth = "              SING...";
   }
-  const radius = 248 + 652 * Math.exp(-Math.max(0, t - 20) * 2.8);
+  const frame = t * 25;
+  const scan = scanTrack(frame);
   const scanGlitch = at(f, [525, 526, 528, 529]);
   const welcomeIntro = [1, 0, 0.28, 0, 1, 0, 0];
   const flashIndex = f - 569;
@@ -68,15 +70,40 @@ export function bootMotion(appTime: number) {
     minus: progress(t, 10.08, 10.24),
     plusAngle: 90 * smooth(progress(t, 10.24, 10.72)),
     authOpacity: f >= 281 && f < 487 ? 1 : 0,
-    brand: [11.12, 11.2, 11.28].map((start) => progress(t, start, start + 0.2)),
-    brandX: 205 * Math.pow(1 - progress(t, 11.12, 11.84), 3),
+    brand: [0, 1, 2].map((line) => brandTrack(frame, line)),
     poweredLetters: typed("POWERED BY RHINE LAB", f, 279, 295).length,
     scanVisible: t >= 19.48 && t < 22.76,
-    scanRadius: radius,
+    scan,
+    scanRadius: scan.radius,
     ringScale: scanGlitch ? 1.94 : 1,
-    ringOpacity: scanGlitch ? 0.32 : progress(t, 19.68, 19.96),
-    scanTracking: 31 * (1 - progress(t, 19.48, 20.44)),
-    scanFont: 22 + 14 * (1 - progress(t, 19.48, 20.44)),
+    ringOpacity: scanGlitch
+      ? 0.32
+      : track(
+          [
+            [487, 0],
+            [488, 0.18],
+            [490, 0.6],
+            [493, 1],
+          ],
+          frame,
+        ),
+    ringBlur: scanGlitch ? 2.2 : 0,
+    scanTracking: track(
+      [
+        [487, 40],
+        [492, 28],
+        [497, 18],
+        [500, 14],
+        [505, 8],
+        [510, 4],
+        [515, 1.7],
+        [520, 0.5],
+        [527, 0],
+        [568, 0],
+      ],
+      frame,
+    ),
+    scanFont: 26.5,
     permissionOpacity:
       t < 21.84 ? progress(t, 19.48, 19.88) : at(f, [547, 550]) ? 0.05 : 0,
     ornament: t >= 21.84,
@@ -90,7 +117,7 @@ export function bootMotion(appTime: number) {
         : 1,
     companyVisible: f >= 588 && !at(f, [590, 591]),
     companyMask: at(f, [594, 595]),
-    highlight: progress(t, 23.52, 24.04),
+    highlight: companyTrack(frame),
     databaseOpacity: f < 626 || at(f, [628, 629, 631, 634]) ? 0 : 1,
     welcomeLogo: f >= 588,
     welcomeScale: 1 - 0.46 * exit,

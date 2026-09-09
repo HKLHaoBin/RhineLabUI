@@ -1,10 +1,12 @@
-import { bootMotion, progress, smooth } from "./boot-motion";
+import { bootMotion } from "./boot-motion";
 import { bootMarkStrokes } from "./brand";
 
 const ns = "http://www.w3.org/2000/svg";
 const arc = (r: number, start: number, sweep: number, x = 960, y = 540) => {
   const point = (a: number) => `${x + Math.cos(a) * r},${y + Math.sin(a) * r}`;
-  return `M${point(start)}A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${point(start + Math.min(sweep, Math.PI * 1.999))}`;
+  if (sweep >= Math.PI * 1.999)
+    return `M${point(start)}A${r},${r} 0 1 1 ${point(start + Math.PI)}A${r},${r} 0 1 1 ${point(start + Math.PI * 2)}`;
+  return `M${point(start)}A${r},${r} 0 ${sweep > Math.PI ? 1 : 0} 1 ${point(start + sweep)}`;
 };
 
 export class BootSequence {
@@ -17,6 +19,8 @@ export class BootSequence {
   private scanPaths: SVGPathElement[];
   private orbitDots: SVGCircleElement[];
   private core: SVGCircleElement;
+  private caps: SVGCircleElement[];
+  private companyInk: HTMLElement[];
   private poweredHTML: string;
   constructor(private stage: HTMLElement) {
     [
@@ -74,6 +78,21 @@ export class BootSequence {
       stage.querySelectorAll<SVGCircleElement>(".scan .orbit-dot"),
     );
     this.core = stage.querySelector(".scan .scan-core")!;
+    this.caps = ["#080a08", "#fff"].map((fill) => {
+      const cap = document.createElementNS(ns, "circle");
+      cap.setAttribute("fill", fill);
+      cap.setAttribute("stroke", "none");
+      this.core.parentElement!.appendChild(cap);
+      return cap;
+    });
+    this.companyInk = Array.from(
+      stage.querySelectorAll<HTMLElement>(".welcome-company strong"),
+    );
+    this.companyInk.forEach((el) => {
+      const ink = document.createElement("span");
+      ink.textContent = el.textContent;
+      el.replaceChildren(ink);
+    });
     this.poweredHTML = this.el(".powered").innerHTML;
   }
   private el(selector: string) {
@@ -104,10 +123,11 @@ export class BootSequence {
     this.opacity(".auth-status", s.authOpacity);
     this.el("#auth-message").textContent = s.auth;
     this.opacity(".brand", 1);
-    this.el(".brand").style.transform = `translateX(${s.brandX}px)`;
-    this.brandLines.forEach(
-      (node, i) => (node.style.opacity = String(s.brand[i])),
-    );
+    this.el(".brand").style.transform = "none";
+    this.brandLines.forEach((node, i) => {
+      node.style.opacity = String(s.brand[i].opacity);
+      node.style.transform = `translateX(${s.brand[i].x}px)`;
+    });
     this.opacity(".powered", s.poweredLetters > 0);
     this.el(".powered").style.clipPath =
       `inset(0 ${100 * (1 - s.poweredLetters / 19)}% 0 0)`;
@@ -122,9 +142,12 @@ export class BootSequence {
     this.el(".welcome-heading").style.color =
       `rgb(${255 * (1 - s.welcomeInk)} ${255 * (1 - s.welcomeInk)} ${255 * (1 - s.welcomeInk)})`;
     this.opacity(".welcome-company", s.companyVisible);
-    this.el(".welcome-company").style.visibility = s.companyMask
-      ? "hidden"
-      : "visible";
+    this.el(".welcome-company").style.opacity = String(
+      s.companyVisible ? (s.companyMask ? 0.65 : 1) : 0,
+    );
+    this.companyInk[1].querySelector("span")!.style.opacity = s.companyMask
+      ? ".06"
+      : "1";
     this.el(".welcome-highlight").style.clipPath =
       `inset(0 ${100 * (1 - s.highlight)}% 0 0)`;
     this.opacity(".welcome-database", s.databaseOpacity);
@@ -136,35 +159,33 @@ export class BootSequence {
     return s;
   }
   private renderScan(s: ReturnType<typeof bootMotion>) {
-    const t = s.t,
-      p = smooth(progress(t, 19.76, 21.8)),
-      r = s.scanRadius;
+    const { scan } = s,
+      r = scan.radius;
     const group = this.scanPaths[0].parentElement!;
     group.setAttribute(
       "transform",
       `translate(960 540) scale(${s.ringScale}) translate(-960 -540)`,
     );
     group.style.opacity = String(s.ringOpacity);
-    const angle = -Math.PI / 2 + (1 - p) * 5;
+    group.style.filter = `blur(${s.ringBlur}px)`;
     this.scanPaths[0].setAttribute(
       "d",
-      arc(r, angle, Math.PI * (1.35 + 0.64 * p)),
+      arc(r, scan.outerStart, scan.outerSweep),
     );
-    this.scanPaths[0].setAttribute("stroke-width", String((2.4 * r) / 256));
+    this.scanPaths[0].setAttribute("stroke-width", "2.4");
     this.scanPaths[1].setAttribute(
       "d",
-      arc(
-        r * (0.68 + 0.23 * p),
-        -Math.PI / 2 - (1 - p) * 6,
-        Math.PI * (1.15 + 0.84 * p),
-      ),
+      arc(scan.whiteRadius, scan.whiteStart, scan.whiteSweep),
     );
-    this.scanPaths[1].setAttribute("stroke-width", String((3.6 * r) / 256));
-    const inner = (t - 19.64) * 4;
-    this.scanPaths[2].setAttribute("d", arc(92 + 28 * (1 - p), inner, 2.9));
+    this.scanPaths[1].setAttribute("stroke-width", "4");
+    const inner = scan.innerStart;
+    this.scanPaths[2].setAttribute(
+      "d",
+      arc(scan.innerRadius, inner, scan.innerSweep),
+    );
     this.scanPaths[3].setAttribute(
       "d",
-      arc(92 + 28 * (1 - p), inner + Math.PI, 1.8),
+      arc(scan.innerRadius, inner + Math.PI, scan.innerSweep),
     );
     this.scanPaths[4].setAttribute("d", arc(38, -inner, 4.2, 830, 552));
     this.scanPaths[5].setAttribute(
@@ -176,16 +197,24 @@ export class BootSequence {
       .forEach((path) => (path.style.opacity = s.ornament ? "1" : "0"));
     this.core.style.opacity = s.ornament ? "1" : "0";
     this.core.setAttribute("r", String(s.coreRadius));
-    const orbit = -Math.PI / 2 + (1 - p) * 7 + 0.1 * Math.sin(t * 2);
+    const orbit = scan.orbit;
     this.orbitDots.forEach((dot, i) => {
       dot.setAttribute(
         "cx",
-        String(960 + Math.cos(orbit + i * Math.PI) * (175 + 50 * (1 - p))),
+        String(960 + Math.cos(orbit + i * Math.PI) * scan.orbitRadius),
       );
       dot.setAttribute(
         "cy",
-        String(540 + Math.sin(orbit + i * Math.PI) * (175 + 50 * (1 - p))),
+        String(540 + Math.sin(orbit + i * Math.PI) * scan.orbitRadius),
       );
+      dot.setAttribute("r", String(scan.dotRadius));
+    });
+    this.caps.forEach((cap, i) => {
+      const angle = i ? scan.whiteStart : scan.outerStart + scan.outerSweep;
+      const radius = i ? scan.whiteRadius : r;
+      cap.setAttribute("cx", String(960 + Math.cos(angle) * radius));
+      cap.setAttribute("cy", String(540 + Math.sin(angle) * radius));
+      cap.setAttribute("r", String(i ? scan.whiteCap : scan.blackCap));
     });
     this.opacity(".scan > span", s.permissionOpacity);
     this.el(".scan > span").style.letterSpacing = `${s.scanTracking}px`;
