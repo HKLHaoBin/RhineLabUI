@@ -1,3 +1,5 @@
+import { InspectionOverlay } from "./inspection-overlay";
+import "./decryption.css";
 import { escapeHtml } from "./html";
 import { normalizeQuality, qualityPresets, type QualityPreset, type RenderQuality } from "./render-quality";
 import { qualityMarkup, syncQualityUI } from "./quality-settings";
@@ -43,7 +45,7 @@ $("#stage").innerHTML = `
     <div class="welcome"><div class="welcome-panel"></div><div class="welcome-heading">WELCOME TO</div><div class="welcome-company"><strong>RHINE LAB.LLC.</strong><strong class="welcome-highlight" aria-hidden="true">RHINE LAB.LLC.</strong></div><div class="welcome-database">INTERNAL DATABASE</div><div class="welcome-logo">${logo}</div></div>
   </section>
   <div id="cinema-caption" class="cinema-caption"></div>
-  <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g></svg>
+  <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g><circle id="inspection-point" r="1.8"/></svg>
   <div id="inspection-text" aria-hidden="true">CONFIDENTIALITY:<strong>GENERAL BUSINESS USE</strong></div>
   <section id="archive-ui" class="archive-ui" aria-label="档案选择">
     <div class="archive-callout"><div class="eyebrow">INTERNAL DATABASE <span>／</span> <span id="archive-category">机构档案</span></div><button class="file-title" data-action="open">FILE NUMBER: <span id="selected-id">X-<span id="selected-code">001</span></span><span class="file-open">↗</span></button><div class="callout-rule"><i></i></div><div class="file-summary"><span id="selected-title">莱茵生命</span><span id="selected-clearance">BUSINESS AREA</span></div><button class="read-file" data-action="open">ACCESS FILE <span>→</span></button></div>
@@ -631,6 +633,7 @@ document.addEventListener("click", (e) => {
     viewer ??= new ModelViewer($("#stage"), () => { audio.setScene(mode); audio.play("page-close"); }, (sound) => audio.play(sound === "tick" ? "ui-tick" : sound));
     audio.setScene("viewer");
     viewer.setQuality(prefs.rendering);
+    scene.finishDecryption();
     viewer.open(
       records[selected].id,
       records[selected].title,
@@ -795,6 +798,8 @@ function bootFrame(t: number) {
   return { reveal, lift, zoom, time: t };
 }
 
+const inspectionOverlay = new InspectionOverlay();
+
 let lastTime = 0,
   frameCount = 0,
   frameStart = performance.now(),
@@ -818,41 +823,8 @@ function frame(ms: number) {
     }
   }
   $("#stage").style.setProperty("--detail-shade", String(mode === "boot" ? 0 : scene?.detailVisibility ?? 0));
-  const inspectTime = cinema?.time ?? -1;
-  const inspectOpacity =
-    ease((inspectTime - 29.15) / 0.35) * (1 - ease((inspectTime - 31.4) / 0.5));
-  $("#inspection-marks").style.opacity = String(inspectOpacity);
-  $("#inspection-text").style.opacity = String(inspectOpacity);
-  $("#inspection-text strong").style.opacity = String(
-    ease((inspectTime - 30.25) / 0.5),
-  );
-  if (scene && inspectOpacity > 0) {
-    const corners = [
-      [-2.05, 3.04],
-      [2.05, 3.04],
-      [-2.05, 0.35],
-      [2.05, 0.35],
-    ].map(([x, y]) => scene!.projectCard(x, y));
-    $("#inspection-corners").innerHTML = corners
-      .map(([x, y]) => `<rect x="${x - 4}" y="${y - 4}" width="8" height="8"/>`)
-      .join("");
-    const a = scene.projectCard(-1.88, 0.5),
-      b = scene.projectCard(-0.36, 1.7);
-    const c = scene.projectCard(0.36, 2.04),
-      d = scene.projectCard(1.9, 2.9);
-    $("#inspection-lines").setAttribute("d", `M${a}L${b}M${c}L${d}`);
-  }
-  if (scene && inspectTime > 32.5) {
-    const [x, y] = scene.projectCard(0.15, 1.9);
-    $("#inspection-marks").style.opacity = String(
-      ease((inspectTime - 32.5) / 0.5),
-    );
-    $("#inspection-corners").innerHTML = "";
-    $("#inspection-lines").setAttribute(
-      "d",
-      `M${x - 2},${y}h4M${x},${y - 2}v4`,
-    );
-  }
+  if (scene) inspectionOverlay.render(scene.decryptionFrame,
+    (x, y) => scene.projectCard(x, y), Boolean(cinema));
   if (Math.floor(time) !== lastTime) {
     lastTime = Math.floor(time);
     $("#clock").textContent = new Date().toLocaleTimeString("en-GB");

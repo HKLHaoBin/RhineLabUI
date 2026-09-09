@@ -20,12 +20,16 @@ export class CardAppearance {
       if (!palette) continue;
       const mat = palette.high.clone();
       const amount = { value: 0 };
+      const clarity = { value: 0 };
       mesh.material = mat;
       mesh.userData.appearance = amount;
+      mesh.userData.glassClarity = clarity;
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.archiveQuality = amount;
+        shader.uniforms.archiveClarity = clarity;
         shader.fragmentShader =
-          "uniform float archiveQuality;\n" + shader.fragmentShader;
+          "uniform float archiveQuality;\nuniform float archiveClarity;\n" +
+          shader.fragmentShader;
         if (name === "Frosted_Polymer") {
           shader.vertexShader =
             "varying float vArchiveHeight;\n" + shader.vertexShader;
@@ -41,7 +45,7 @@ export class CardAppearance {
           );
           shader.fragmentShader = shader.fragmentShader.replace(
             "#include <roughnessmap_fragment>",
-            "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.28, mix(0.48, 0.035, smoothstep(0.36, 0.68, vArchiveHeight)), archiveQuality);",
+            "#include <roughnessmap_fragment>\nroughnessFactor = mix(mix(0.28, mix(0.48, 0.035, smoothstep(0.36, 0.68, vArchiveHeight)), archiveQuality), 0.025, archiveClarity);",
           );
         } else if (!palette.low) {
           // Stable screen-space coverage adds internal geometry without an
@@ -53,8 +57,45 @@ export class CardAppearance {
         }
       };
       mat.customProgramCacheKey = () =>
-        `archive-surface-${name}-${Boolean(palette.low)}`;
+        `archive-surface-clarity-${name}-${Boolean(palette.low)}`;
     }
+  }
+
+  setClarity(group: THREE.Group, value: number) {
+    const clarity = THREE.MathUtils.clamp(value, 0, 1);
+    // Traversal still works after the viewer reparents meshes into part groups.
+    group.traverse((child) => {
+      if (!(child instanceof THREE.Mesh) || !child.userData.glassClarity)
+        return;
+      child.userData.glassClarity.value = clarity;
+      if (child.userData.surface !== "Frosted_Polymer") return;
+      const mat = child.material as Surface;
+      const palette = this.palettes.get("Frosted_Polymer")!;
+      const quality = child.userData.appearance.value as number;
+      const baseline = (
+        key: "thickness" | "transmission" | "attenuationDistance",
+      ) =>
+        THREE.MathUtils.lerp(
+          palette.low?.[key] ?? palette.high[key],
+          palette.high[key],
+          quality,
+        );
+      mat.thickness = THREE.MathUtils.lerp(
+        baseline("thickness"),
+        0.018,
+        clarity,
+      );
+      mat.transmission = THREE.MathUtils.lerp(
+        baseline("transmission"),
+        0.985,
+        clarity,
+      );
+      mat.attenuationDistance = THREE.MathUtils.lerp(
+        baseline("attenuationDistance"),
+        8,
+        clarity,
+      );
+    });
   }
 
   apply(group: THREE.Group, value: number) {

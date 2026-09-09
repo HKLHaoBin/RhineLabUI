@@ -58,19 +58,24 @@ def text(name, body,x,z,size,mat=ink):
     o.location=(x,-.123,z);o.rotation_euler=(math.pi/2,0,0);c.materials.append(mat)
     return o
 
-def annular_profile(name, x, z, profile, mat, segments=128):
+def annular_profile(name, x, z, profile, mat, segments=128, start=0, end=2*math.pi):
     # Closed revolved cross-section: a shallow moulded lens, not a round tube.
     vertices=[]; faces=[]; n=len(profile)
-    for i in range(segments):
-        a=2*math.pi*i/segments
+    closed=abs(end-start-2*math.pi)<1e-6
+    segments=max(8,math.ceil(segments*(end-start)/(2*math.pi)))
+    rows=segments if closed else segments+1
+    for i in range(rows):
+        a=start+(end-start)*i/segments
         for r,y in profile: vertices.append((x+r*math.cos(a),y,z+r*math.sin(a)))
     for i in range(segments):
         for j in range(n):
-            faces.append((i*n+j,((i+1)%segments)*n+j,((i+1)%segments)*n+(j+1)%n,i*n+(j+1)%n))
+            faces.append((i*n+j,((i+1)%rows)*n+j,((i+1)%rows)*n+(j+1)%n,i*n+(j+1)%n))
+    if not closed:
+        faces.extend([tuple(reversed(range(n))),tuple(segments*n+j for j in range(n))])
     mesh=bpy.data.meshes.new(name);mesh.from_pydata(vertices,[],faces);mesh.update()
     obj=bpy.data.objects.new(name,mesh);scene.collection.objects.link(obj);mesh.materials.append(mat)
     # The clockwise section above yields outward normals, including the bore.
-    for p in mesh.polygons:p.use_smooth=True
+    for p in mesh.polygons:p.use_smooth=len(p.vertices)==4
     return obj
 
 def channel(name, points, depth, radius, mat):
@@ -167,6 +172,9 @@ cube('Ivory spine cap',(-2.46,-.02,1.85),(.055,.155,3.68),edge,.012)
 guide=material('Amber_Lightguide',(.98,.68,.31),.28,.05,.25)
 cube('Amber light guide',(-2.35,-.095,1.85),(.12,.018,3.60),guide,.01)
 
+detail_script=Path(ROOT)/'art/clear_reference_details.py'
+exec(compile(detail_script.read_text(encoding='utf-8-sig'),str(detail_script),'exec'))
+
 # Convert text, bake modifiers, and group by material for efficient instancing.
 bpy.ops.object.select_all(action='SELECT')
 for o in list(scene.objects):
@@ -175,7 +183,7 @@ for o in list(scene.objects):
     for m in list(o.modifiers):
         try:bpy.ops.object.modifier_apply(modifier=m.name)
         except:pass
-for mat in [shell,edge,core,metal,gold,paper,ink,diffuser,optics,optical_edge,guide]:
+for mat in list(dict.fromkeys(o.data.materials[0] for o in scene.objects if o.type=='MESH' and o.data.materials)):
     bpy.ops.object.select_all(action='DESELECT')
     obs=[o for o in scene.objects if o.type=='MESH' and o.data.materials and o.data.materials[0]==mat]
     if not obs:continue

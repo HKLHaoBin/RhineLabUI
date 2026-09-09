@@ -13,8 +13,8 @@ def part_for(name):
     if name.startswith(('Rear translucent carrier', 'Polished perimeter rail', 'Ivory spine cap', 'Carrier mating seam')):
         return 'carrier'
     if name.startswith('Information substrate'): return 'substrate'
-    if name.startswith(('Embedded optical cavity', 'Embedded amber annulus')): return 'optical-core'
-    if name.startswith(('Subsurface refractive shoulder', 'Inner optical bevel', 'Concentric optical machining')):
+    if name.startswith(('Embedded optical cavity', 'Embedded amber annulus', 'Folded optical tab')): return 'optical-core'
+    if name.startswith(('Subsurface refractive shoulder', 'Inner optical bevel', 'Concentric optical machining', 'Optical ribbon')):
         return 'optical-lenses'
     if name.startswith(('Countersunk washer', 'Machined screw', 'Screw slot')): return 'fasteners'
     return 'cover'

@@ -24,7 +24,7 @@ const PARTS = [
   { id: "carrier", label: "背板与框架", en: "CARRIER", depth: -2.05 },
 ] as const;
 
-type ModelSource = { model: THREE.Group; dispose: () => void };
+type ModelSource = { model: THREE.Group; dispose: () => void; setClarity?: (value: number) => void };
 export class ModelViewer {
   readonly root: HTMLElement;
   private canvasHost: HTMLElement;
@@ -41,6 +41,8 @@ export class ModelViewer {
   private groups = new Map<string, THREE.Group>();
   private spread = { value: 0, velocity: 0 };
   private targetSpread = 0;
+  private clarity = { value: 1, velocity: 0 };
+  private targetClarity = 1;
   private lastTime = 0;
   private request = 0;
   private reduced = false;
@@ -78,6 +80,7 @@ export class ModelViewer {
         <div class="viewer-heading"><span>RHINE LAB / OBJECT STUDY</span><h2 id="viewer-title">档案模型</h2><p id="viewer-file"></p></div>
         <span class="viewer-index">360<span>°</span></span>
       </header>
+      <div class="viewer-surface" role="group" aria-label="玻璃模式"><button data-viewer="clear" aria-pressed="true">清晰</button><button data-viewer="frosted" aria-pressed="false">磨砂</button></div>
       <aside class="viewer-parts" aria-label="模型装配结构"><div>ASSEMBLY / 装配结构</div>${PARTS.map((p, i) => `<p><span>${String(i + 1).padStart(2, "0")}</span><strong>${p.label}</strong><small>${p.en}</small></p>`).join("")}</aside>
       <div class="viewer-loading" role="status"><span>正在载入模型…</span><button data-viewer="retry" hidden>重新载入 ↗</button></div>
       <footer class="viewer-footer">
@@ -137,6 +140,10 @@ export class ModelViewer {
       if (action === "close") this.close();
       if (action === "retry") void this.load();
       if (this.loading || !this.source) return;
+      if (action === "clear" || action === "frosted") {
+        this.setSurface(action === "clear");
+        this.onSound("tick");
+      }
       if (action === "explode" && this.targetSpread !== 1) {
         this.setExploded(true);
         this.onSound("explode");
@@ -179,6 +186,8 @@ export class ModelViewer {
       "FILE " + id + " / INTERNAL DATABASE";
     this.spread = { value: 0, velocity: 0 };
     this.targetSpread = 0;
+    this.clarity = { value: 1, velocity: 0 };
+    this.setSurface(true);
     this.lastTime = 0;
     this.root.dataset.exploded = "false";
     this.resetView(false);
@@ -352,11 +361,18 @@ export class ModelViewer {
   }
 
   private setButtonsDisabled(disabled: boolean) {
-    for (const action of ["explode", "assemble", "reset"]) {
+    for (const action of ["explode", "assemble", "reset", "clear", "frosted"]) {
       this.root.querySelector<HTMLButtonElement>(
         `[data-viewer="${action}"]`,
       )!.disabled = disabled;
     }
+  }
+  private setSurface(clear: boolean) {
+    this.targetClarity = clear ? 1 : 0;
+    this.root.dataset.surface = clear ? "clear" : "frosted";
+    this.root.querySelector('[data-viewer="clear"]')!.setAttribute("aria-pressed", String(clear));
+    this.root.querySelector('[data-viewer="frosted"]')!.setAttribute("aria-pressed", String(!clear));
+    if (this.reduced) this.clarity = { value: this.targetClarity, velocity: 0 };
   }
   private setExploded(value: boolean) {
     this.targetSpread = value ? 1 : 0;
@@ -510,6 +526,10 @@ export class ModelViewer {
     const dt = Math.min(this.lastTime ? time - this.lastTime : 1 / 60, 0.05);
     this.lastTime = time;
     if (this.source) {
+      damp(this.clarity, this.targetClarity, 8, dt);
+      if (Math.abs(this.clarity.value - this.targetClarity) < .0001 && Math.abs(this.clarity.velocity) < .001)
+        this.clarity = { value: this.targetClarity, velocity: 0 };
+      this.source.setClarity?.(this.clarity.value);
       damp(this.spread, this.targetSpread, this.reduced ? 45 : 5.5, dt);
       if (
         Math.abs(this.spread.value - this.targetSpread) < 0.0001 &&
@@ -539,6 +559,8 @@ export class ModelViewer {
     else this.renderer.render(this.scene, this.camera);
     this.root.dataset.stats = JSON.stringify({
       ready: Boolean(this.source),
+      clarity: this.clarity.value,
+      targetClarity: this.targetClarity,
       spread: this.spread.value,
       target: this.targetSpread,
       distance: this.camera.position.distanceTo(this.cameraMotion.focus),
