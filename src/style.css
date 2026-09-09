@@ -736,7 +736,6 @@ button {
   position: absolute;
   left: 60px;
   bottom: 235px;
-  animation: fadeIn 1.4s 0.4s both;
 }
 .object-caption > span {
   font-size: 37px;
@@ -826,6 +825,7 @@ button {
   vertical-align: middle;
 }
 .detail-tabs {
+  position: relative;
   display: flex;
   gap: 34px;
   border-bottom: 1px solid #bdb8ad;
@@ -843,14 +843,16 @@ button {
 .detail-tabs button.active {
   color: #191c16;
 }
-.detail-tabs button.active:after {
-  content: "";
+.tab-indicator {
   position: absolute;
   bottom: -1px;
   left: 0;
-  right: 0;
+  width: 1px;
   height: 2px;
   background: #25281e;
+  transform-origin: left center;
+  pointer-events: none;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .tab-panel {
   height: 189px;
@@ -967,7 +969,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fadeIn 0.3s both;
+}
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal-backdrop[data-transition="closing"] .terminal-modal {
+  pointer-events: none;
 }
 .terminal-modal {
   width: 1260px;
@@ -977,7 +984,6 @@ button {
   border: 1px solid #f7f5ee;
   position: relative;
   padding: 35px 53px;
-  animation: modalEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .modal-top {
   display: flex;
@@ -1492,7 +1498,23 @@ button {
   opacity: 0;
   pointer-events: none;
 }
-[data-mode="detail"] .scene-atmosphere {
+.archive-atmosphere {
+  background: none;
+}
+.archive-atmosphere::before,
+.archive-atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.archive-atmosphere::before {
+  opacity: calc(1 - var(--detail-shade, 0));
+  background:
+    linear-gradient(180deg, rgba(234, 231, 226, 0.35), transparent 38%),
+    radial-gradient(ellipse at 42% 47%, transparent 32%, rgba(232, 229, 225, 0.19) 85%);
+}
+.archive-atmosphere::after {
+  opacity: var(--detail-shade, 0);
   background: linear-gradient(
     90deg,
     transparent 40%,
