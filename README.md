@@ -4,43 +4,57 @@
 
 ![莱茵生命终端：由透明档案盒构成的三维阵列](docs/media/archive.jpg)
 
-这是对《明日方舟》特别映像「莱茵生命：访问」终端界面的非官方复刻。项目参考原 PV 的 **5–40 秒**，重建开场、档案阵列和抽取特写，并扩展了检索、收藏、档案阅读与独立的 360° 模型查看器。
+这是对《明日方舟》特别映像「莱茵生命：访问」终端界面的非官方复刻。从白底开场进入五列循环档案阵列，抽取一份档案，等待玻璃与正文解密，再进入独立查看器观察内部结构。
+
+项目以原 PV 的 **5–40 秒**为主要视觉与动效参考，实际开场从 **6.76 秒的白色画面**开始；内部结构另参考约 **41 秒及 46–51 秒**的正面与多角度画面。检索、收藏、正文阅读、结构拆解与声音设置是可操作的扩展功能。
 
 代码由 GPT-6 Astra 协助完成，模型通过 Blender MCP 制作。界面采用 **TypeScript + Three.js + Vite**，运行时实时渲染三维模型，开场由 DOM / SVG 与场景时间轴驱动。
 
 [快速运行](#快速运行) · [界面与动效](#界面与动效) · [操作说明](#操作说明) · [源码与 Blender 工程下载](https://pan.quark.cn/s/762d9ee9dfc3) · [参考原 PV](https://www.bilibili.com/video/BV1rr4y1b7sz/)
 
-## 可以体验什么
+## 新版效果
 
-- **终端开场**：从白色画面进入，依次呈现逐字输入、标志绘制、身份接入、权限扫描、欢迎转场与档案阵列展开。
-- **持续循环的档案阵列**：五类、每类八份，共 40 份档案。上下翻阅、左右切列均可循环，切回某列时保留上次选择。
-- **连续的抽取与归位**：档案从阵列中竖直升起，镜头衔接到详情视角；获得净空后可拖动观察，返回时先转正再下降。
-- **快速翻阅反馈**：编号连续滚动；快速切换时，标题闪动并收成黑色横条，停下后恢复最终标题。
-- **可阅读的档案**：概述、研究记录与访问日志，支持关键词检索、分类筛选、收藏，以及导出 UTF-8 文本。
-- **独立模型查看器**：360° 环绕、滚轮缩放、方向键平移、视角复位，支持六组结构拆解与一键重组。
+- **模型与正文同步解密**：对角解密线合拢、保持并收束，盖板自上而下由磨砂变清晰；右侧文档的遮挡条随之退开，露出标题、资料字段与正文。
+- **可看清的双环内构**：双环、连接带与白色／橙色部件封装在盖板与基板之间。顶边黄色方块、两处螺丝和盖板后的刻线补全了外壳细节。
+- **清晰／磨砂切换**：独立查看器可以随时改变玻璃状态，保留当前视角和拆解位置；支持平滑缩放、平移及复位。
+- **滚动文字与编号**：档案标题、分类、权限标签及编号连续滚动，快速输入衔接最新选择。
+- **重新校准的开场**：逐字输入、圆环绕行、连续 Logo 笔画、身份验证和欢迎转场，按原片逐帧修订轨迹与节奏。
+- **声音与画质设置**：玻璃交互音、系统电子音与三轨循环配乐；音效和音乐可独立开关、调节音量。画质提供四档预设及精细设置。
 
 ## 界面与动效
 
-以下画面均来自项目的实际运行录制。静态图可点击查看大图；动图经过降帧与压缩，便于在 README 中浏览。
+以下截图与动图于 **2026-09-09** 重新采集，均来自当前版本的实际浏览器运行。截图为 **1600 × 900**，GIF 为 **8–12 fps**、原速播放；压缩后的帧率与颜色不代表实时渲染质量。采集版本与复现步骤见 [素材说明](docs/media/README.md)。
 
-### 阅读与检索
+### 抽取、解密与阅读
 
-| 档案详情 · 研究记录与收藏 | 档案索引 · 编号检索与分类筛选 |
+档案竖直升起，镜头靠近并转向详情构图。解密时玻璃与文档一起揭示；完成后可阅读概述、研究记录及访问日志，也可以收藏或导出 UTF-8 文本。
+
+![档案抽取与同步解密：对角线收束，玻璃从上向下变清晰，正文遮挡退开](docs/media/decryption.gif)
+
+| 解密完成 · 清晰内构与档案概述 | 研究记录 · 正文阅读 |
 | --- | --- |
-| [![档案详情：左侧为透明档案盒，右侧为研究记录与收藏操作](docs/media/detail.jpg)](docs/media/detail.jpg) | [![档案检索：输入 X-001，找到莱茵生命机构档案](docs/media/search.jpg)](docs/media/search.jpg) |
+| [![解密后的档案：左侧可见双环内构，右侧显示机构资料](docs/media/detail.jpg)](docs/media/detail.jpg) | [![档案研究记录页签](docs/media/research.jpg)](docs/media/research.jpg) |
 
-### 360° 模型查看与拆解
+### 清晰内构与磨砂玻璃
 
-透明盖板、折射环组、光学核心、信息基板等部件按层展开。拆解后仍可旋转观察，重组完成后可返回原来的档案。
+在 360° 查看器中比较两种玻璃状态。切换不会重置镜头或拆解状态，返回详情后仍保留已解密状态。
 
-[![独立模型查看器：六组档案盒结构拆解展示](docs/media/assembly.jpg)](docs/media/assembly.jpg)
+| 清晰 · 双环与连接带 | 磨砂 · 轻柔折射 |
+| --- | --- |
+| [![清晰玻璃下的档案内部结构](docs/media/viewer-clear.jpg)](docs/media/viewer-clear.jpg) | [![相同视角下的磨砂玻璃](docs/media/viewer-frosted.jpg)](docs/media/viewer-frosted.jpg) |
 
 <details>
-<summary><strong>查看动图：循环切列与翻阅</strong></summary>
+<summary><strong>查看动图：清晰／磨砂连续切换</strong></summary>
 
-![操作动图：档案阵列连续移动，编号与选择状态同步更新](docs/media/browse.gif)
+![玻璃由清晰过渡到磨砂，再恢复清晰](docs/media/glass-motion.gif)
 
 </details>
+
+### 360° 旋转、拆解与重组
+
+紧固件、透明盖板、折射环组、光学核心、信息基板、背板与框架按六组展开。拆解后仍可旋转、平移和缩放，观察部件之间的关系，再一键重组。
+
+[![新版档案模型：六组结构分层展开](docs/media/assembly.jpg)](docs/media/assembly.jpg)
 
 <details>
 <summary><strong>查看动图：模型拆解、旋转与重组</strong></summary>
@@ -48,6 +62,40 @@
 ![操作动图：档案盒从完整状态拆开，旋转观察后连续重组](docs/media/assembly-motion.gif)
 
 </details>
+
+### 循环阵列与滚动标题
+
+五类、每类八份，共 **40 份档案**。上下翻阅、左右切列均可持续循环；切回某列时保留上次选择。选中抬起与阵列波浪同时开始，标题和编号跟随输入滚动；返回阵列时，档案先转正再下降。
+
+<details>
+<summary><strong>查看动图：切列、翻阅与连续文字滚动</strong></summary>
+
+![循环切换档案，标题、编号、分类及刻度同步更新](docs/media/browse.gif)
+
+</details>
+
+### 白底开场
+
+从终端逐字输入到圆环、Logo 绘制，再进入身份接入与权限验证。可以重播，也可以跳过开场直接进入阵列。
+
+[![白底开场中的莱茵生命标志与身份接入文字](docs/media/boot.jpg)](docs/media/boot.jpg)
+
+<details>
+<summary><strong>查看动图：新版开场片段</strong></summary>
+
+![新版白底开场：逐字输入、圆环和连续标志绘制、身份验证与欢迎转场](docs/media/boot-motion.gif)
+
+</details>
+
+### 检索、声音与画质
+
+检索支持编号、标题、英文名、科室、相关人物与分类筛选。收藏和设置保存在当前浏览器中。音效区分档案的玻璃碰触与系统操作的电子反馈，背景配乐随开场、阵列、详情和查看器调整三轨比例。
+
+| 档案索引 · 关键词与分类筛选 | 系统设置 · 声音与画质 |
+| --- | --- |
+| [![输入莱茵关键词后的档案检索结果](docs/media/search.jpg)](docs/media/search.jpg) | [![独立音效和音乐音量、减少动态效果与画质预设](docs/media/settings.jpg)](docs/media/settings.jpg) |
+
+GIF 不含声音。可单独[试听原创配乐「观测室」](public/audio/observatory-preview.mp3)，完整声音效果请启动应用体验。浏览器可能需要一次点击或按键才允许播放音频。
 
 ## 快速运行
 
@@ -105,17 +153,18 @@ npm run preview
 | 操作 | 效果 |
 | --- | --- |
 | 鼠标拖动 | 环绕旋转模型 |
-| 滚轮 | 缩放 |
+| 滚轮、`+` / `−` | 平滑缩放 |
 | 方向键 | 平移观察位置 |
-| 「复位视角」 | 恢复初始观察位置 |
+| 「复位视角」或 `Home` | 平滑恢复初始观察位置 |
+| 「清晰」 / 「磨砂」 | 切换玻璃状态，保留视角和拆解位置 |
 | 「拆解档案」 / 「一键重组」 | 展开六组部件 / 连续收回 |
 | `Esc` 或「返回档案」 | 关闭查看器，返回原档案 |
 
 ### 显示与偏好
 
-布局以 **1920 × 1080** 为基准等比例适应窗口，主要面向桌面与横向屏幕。设置页提供界面音效、减少动态效果、画质、全屏及重新播放开场等选项。收藏和偏好保存在当前浏览器中。
+布局以 **1920 × 1080** 为基准等比例适应窗口，主要面向桌面与横向屏幕。设置页提供音效与背景音乐的独立开关、独立音量，以及减少动态效果、画质、全屏和重新播放开场。收藏和偏好保存在当前浏览器中。
 
-首次载入需要下载字体与 GLB 模型。项目保留了四份官方 MiSans WOFF2，合计约 19.7 MB，按实际使用加载。若三维交互不够流畅，可在设置中关闭高质量渲染；需要简化镜头运动时，可启用减少动态效果。
+首次载入需要加载字体与 GLB 模型。项目保留了四份官方 MiSans WOFF2，合计约 19.7 MB，按实际使用加载。画质预设为**性能、原始、高、极高**，默认使用原始；精细设置可调整渲染比例、像素密度、抗锯齿、纹理过滤、透明材质分辨率、阴影、环境遮蔽及景深。运行不够流畅时可选性能档；需要简化镜头、文字与揭示动画时，可启用减少动态效果。
 
 ## 工程结构
 
@@ -125,6 +174,9 @@ npm run preview
 | [`src/boot.ts`](src/boot.ts)、[`src/boot-motion.ts`](src/boot-motion.ts) | 开场界面与逐帧时间轴 |
 | [`src/scene.ts`](src/scene.ts)、[`src/archive-loop.ts`](src/archive-loop.ts) | Three.js 场景、循环阵列、抽取与归位 |
 | [`src/model-viewer.ts`](src/model-viewer.ts) | 独立模型查看器与拆解动画 |
+| [`src/decryption.ts`](src/decryption.ts)、[`src/document-decryption.ts`](src/document-decryption.ts) | 模型解密轨迹与正文同步揭示 |
+| [`src/audio.ts`](src/audio.ts)、[`public/audio/`](public/audio/) | 交互音效、三轨配乐与音源记录 |
+| [`src/render-quality.ts`](src/render-quality.ts)、[`src/quality-renderer.ts`](src/quality-renderer.ts) | 画质预设与渲染管线 |
 | [`content/archives.json`](content/archives.json) | 页面与下载共用的五类、40 份档案数据 |
 | [`src/data.ts`](src/data.ts) | 档案类型与阵列位置映射 |
 | [`public/assets/`](public/assets/) | 运行所需的 GLB 模型 |
@@ -146,9 +198,13 @@ node scripts/check-motion.mjs
 node scripts/check-loop.mjs
 node scripts/check-appearance.mjs
 node scripts/check-assembly.mjs
+node scripts/check-decryption.mjs
+node scripts/check-shell.mjs
+node scripts/check-internal-optics.mjs
+node scripts/check-quality.mjs
 ```
 
-这些脚本检查运动、循环位置、外观配置与装配结构。视觉效果仍需在浏览器中实际查看，尤其是快速切换、模型归位及查看器进出过渡。
+这些脚本检查运动、循环位置、外观、装配结构、解密轨迹、外壳、内构与画质参数。视觉效果仍需在浏览器中实际查看，尤其是快速切换、模型归位、文档揭示及查看器进出过渡。
 
 | 本地调试路径 | 用途 |
 | --- | --- |
@@ -156,6 +212,9 @@ node scripts/check-assembly.mjs
 | `/?scene=detail` | 直接进入档案详情 |
 | `/?time=28&freeze=1` | 固定在参考时间轴的指定时刻 |
 | `/reference/review.html`、`/reference/boot-review.html` | 原片与复刻对照工具 |
+| `/reference/decryption-review.html` | 玻璃解密逐帧对照 |
+| `/reference/document-decryption-check.html` | 正文同步解密与布局检查 |
+| `/reference/boot-audio.html` | 完整开场声音试听 |
 
 原 PV 不随仓库分发。使用视频对照工具时，需要自行准备对应参考视频；正常运行应用不依赖它。
 
@@ -167,6 +226,8 @@ node scripts/check-assembly.mjs
 | [`art/archive-assembly.blend`](art/archive-assembly.blend) | 可按六组结构拆解的模型 |
 | [`art/build_archive.py`](art/build_archive.py) | 生成基础模型与 GLB |
 | [`art/build_assembly.py`](art/build_assembly.py) | 生成拆解模型与 GLB |
+| [`art/internal_architecture.py`](art/internal_architecture.py) | 当前双环内构与连接带 |
+| [`art/shell_reference_details.py`](art/shell_reference_details.py) | 顶边方块、螺丝及盖板后刻线 |
 | [`art/setup_studio.py`](art/setup_studio.py) | 配置资产审阅灯光与相机 |
 
 普通运行直接使用现有 GLB 即可，无需安装 Blender。重新建模时，可在 Blender 的脚本环境中通过 `runpy.run_path()` 执行对应脚本，或通过 Blender MCP 调用。脚本根据自身位置确定项目目录，重新生成会更新对应模型输出。
@@ -178,7 +239,8 @@ node scripts/check-assembly.mjs
 模型为重新制作；实时折射、景深、灯光与局部细节和原 PV 仍有差异。身份验证画面是演示状态机，不连接真实身份或业务服务。
 
 - **MiSans**：使用小米官方字体文件，保留[字体许可](public/fonts/MiSans-license.pdf)及字体目录内的版权说明，设置页也提供署名与许可入口。
-- **Rolling Number**：用于编号滚动，许可见 [`public/licenses/rolling-number.txt`](public/licenses/rolling-number.txt)。
+- **Rolling Number**：用于编号和文字滚动，许可见 [`public/licenses/rolling-number.txt`](public/licenses/rolling-number.txt)。
+- **声音**：三轨配乐为本项目程序编配；逐字输入使用原 PV 的三个 38ms 短音，来源与处理记录见 [音频说明](public/audio/README.md)。原片短音及其衍生片段不纳入原创配乐的 MIT 授权声明。
 - **其他依赖**：各自遵循其原有许可。源码公开不改变第三方资源的权利。
 
 源码包包含运行代码、模型、Blender 工程、说明与验证脚本，不包含依赖目录、本机缓存、原 PV 或完整录制素材。
