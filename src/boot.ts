@@ -1,5 +1,5 @@
 import { bootMotion } from "./boot-motion";
-import { bootMarkStrokes } from "./brand";
+import { bootMarkContour } from "./brand";
 
 const ns = "http://www.w3.org/2000/svg";
 const arc = (r: number, start: number, sweep: number, x = 960, y = 540) => {
@@ -11,7 +11,7 @@ const arc = (r: number, start: number, sweep: number, x = 960, y = 540) => {
 
 export class BootSequence {
   private nodes: Map<string, HTMLElement> = new Map();
-  private strokes: SVGPathElement[];
+  private contour: SVGPathElement;
   private letters: SVGTextElement;
   private plus: SVGPathElement;
   private minus: SVGPathElement;
@@ -19,6 +19,7 @@ export class BootSequence {
   private scanPaths: SVGPathElement[];
   private orbitDots: SVGCircleElement[];
   private core: SVGCircleElement;
+  private satellites: SVGCircleElement[];
   private caps: SVGCircleElement[];
   private companyInk: HTMLElement[];
   private poweredHTML: string;
@@ -45,15 +46,9 @@ export class BootSequence {
     ].forEach((s) => this.nodes.set(s, stage.querySelector<HTMLElement>(s)!));
     const mark = stage.querySelector<SVGSVGElement>(".boot-logo svg")!;
     const original = mark.querySelector("path")!;
-    this.strokes = bootMarkStrokes.map((d) => {
-      const path = original.cloneNode() as SVGPathElement;
-      path.setAttribute("d", d);
-      path.setAttribute("pathLength", "1");
-      path.style.strokeDasharray = "1";
-      mark.insertBefore(path, original);
-      return path;
-    });
-    original.remove();
+    this.contour = original;
+    this.contour.setAttribute("d", bootMarkContour);
+    this.contour.setAttribute("pathLength", "1");
     const symbols = mark.querySelector("path:not([pathLength])")!;
     this.plus = document.createElementNS(ns, "path");
     this.plus.setAttribute("d", "M44 70h50M69 45v50");
@@ -78,6 +73,17 @@ export class BootSequence {
       stage.querySelectorAll<SVGCircleElement>(".scan .orbit-dot"),
     );
     this.core = stage.querySelector(".scan .scan-core")!;
+    this.core.setAttribute("cx", "959.5");
+    this.core.setAttribute("cy", "539.5");
+    this.satellites = Array.from({ length: 6 }, () => {
+      const dot = document.createElementNS(ns, "circle");
+      dot.classList.add("satellite-dot");
+      dot.setAttribute("fill", "#080a08");
+      dot.setAttribute("stroke", "none");
+      // Draw beneath the core so its large flashes naturally cover the orbit.
+      this.core.parentElement!.insertBefore(dot, this.core);
+      return dot;
+    });
     this.caps = ["#080a08", "#fff"].map((fill) => {
       const cap = document.createElementNS(ns, "circle");
       cap.setAttribute("fill", fill);
@@ -109,17 +115,25 @@ export class BootSequence {
     this.opacity(".access-text", s.accessOpacity);
     this.opacity(".boot-logo", s.logoOpacity);
     this.el(".boot-logo").style.transform =
-      `translateX(${294 * (1 - s.logoLeft)}px)`;
-    this.strokes.forEach(
-      (p, i) =>
-        (p.style.strokeDashoffset = String(
-          1 - [s.drawTop, s.drawLeft, s.drawRight][i],
-        )),
-    );
+      `translate(${s.logo.offsetX}px, 1px)`;
+    this.contour.style.strokeDasharray = `${s.logo.length} ${1 - s.logo.length}`;
+    this.contour.style.strokeDashoffset = String(-s.logo.start);
+    this.contour.setAttribute("stroke-width", String(s.logo.strokeWidth));
     this.letters.textContent = s.logoLetters;
-    this.plus.style.opacity = String(s.plus);
-    this.minus.style.opacity = String(s.minus);
-    this.plus.setAttribute("transform", `rotate(${s.plusAngle} 69 70)`);
+    this.plus.style.opacity = this.minus.style.opacity =
+      s.logo.symbolScale > 0 ? "1" : "0";
+    this.plus.setAttribute(
+      "transform",
+      `translate(${s.logo.plusX} 70) rotate(${s.logo.plusAngle}) scale(${s.logo.symbolScale}) translate(-69 -70)`,
+    );
+    this.minus.setAttribute(
+      "d",
+      `M${-s.logo.minusWidth / 2} 0h${s.logo.minusWidth}`,
+    );
+    this.minus.setAttribute(
+      "transform",
+      `translate(${s.logo.minusX} 70) scale(${s.logo.symbolScale})`,
+    );
     this.opacity(".auth-status", s.authOpacity);
     this.el("#auth-message").textContent = s.auth;
     this.opacity(".brand", 1);
@@ -187,14 +201,19 @@ export class BootSequence {
       "d",
       arc(scan.innerRadius, inner + Math.PI, scan.innerSweep),
     );
-    this.scanPaths[4].setAttribute("d", arc(38, -inner, 4.2, 830, 552));
-    this.scanPaths[5].setAttribute(
-      "d",
-      arc(38, Math.PI - inner, 4.2, 1090, 528),
-    );
-    this.scanPaths
-      .slice(4)
-      .forEach((path) => (path.style.opacity = s.ornament ? "1" : "0"));
+    s.scanOrbit.sides.forEach((side, i) => {
+      this.scanPaths[i + 4].setAttribute(
+        "d",
+        arc(side.radius, side.start, side.sweep, side.x, side.y),
+      );
+      this.scanPaths[i + 4].style.opacity = s.scanOrbit.sideVisible ? "1" : "0";
+    });
+    s.scanOrbit.satellites.forEach((point, i) => {
+      const dot = this.satellites[i];
+      dot.setAttribute("cx", String(point.x));
+      dot.setAttribute("cy", String(point.y));
+      dot.setAttribute("r", String(point.radius));
+    });
     this.core.style.opacity = s.ornament ? "1" : "0";
     this.core.setAttribute("r", String(s.coreRadius));
     const orbit = scan.orbit;
