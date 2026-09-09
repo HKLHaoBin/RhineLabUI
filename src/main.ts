@@ -4,10 +4,9 @@ import { qualityMarkup, syncQualityUI } from "./quality-settings";
 import "@kitlangton/rolling-number/styles.css";
 import "./style.css";
 import "./quality-settings.css";
-import { createRollingNumber } from "@kitlangton/rolling-number";
+import { createRollingNumber, createRollingText } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
-import { ScrubTitle } from "./scrub-title";
 import { ContentTransition, SurfaceTransition } from "./ui-transitions";
 import { BootSequence } from "./boot";
 import { wrap, type ArchiveNavigation } from "./archive-loop";
@@ -129,12 +128,15 @@ const prefs = {
   ...storedPrefs,
   rendering: normalizeQuality(storedPrefs.rendering, storedPrefs.quality !== false),
 };
-const numberOptions = {
-  locales: "en-US",
-  format: { minimumIntegerDigits: 2, useGrouping: false },
+const rollingMotion = {
   duration: 460,
   motionBlur: true,
   animated: !prefs.reduced,
+};
+const numberOptions = {
+  ...rollingMotion,
+  locales: "en-US",
+  format: { minimumIntegerDigits: 2, useGrouping: false },
 };
 const fileCounter = createRollingNumber($("#selected-number"), {
   ...numberOptions,
@@ -149,7 +151,12 @@ const codeOptions = {
   format: { minimumIntegerDigits: 3, useGrouping: false },
   value: 1,
 };
-const selectionTitle = new ScrubTitle($("#selected-title"));
+const selectionTitle = createRollingText($("#selected-title"), {
+  ...rollingMotion,
+  text: $("#selected-title").textContent ?? "",
+  transition: "direct",
+  stagger: "none",
+});
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
@@ -174,7 +181,7 @@ function saveAudioPrefs() {
 function savePrefs() {
   saveAudioPrefs();
   if (prefs.reduced) {
-    selectionTitle.reset();
+    selectionTitle.finish();
     detailTransition.finish();
     modalTransition?.finish();
     tabTransition.cancel();
@@ -186,6 +193,7 @@ function savePrefs() {
   syncQualityUI(prefs.rendering);
   updateQualitySummary();
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
+  selectionTitle.update({ animated: !prefs.reduced && mode === "archive" });
   columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
   selectedCode.update({ animated: !prefs.reduced && mode === "archive" });
   hoverCode.update({ animated: !prefs.reduced && mode === "archive" });
@@ -210,7 +218,8 @@ $("#file-ticks").innerHTML = records
 
 function setMode(next: Mode) {
   const previousMode = mode;
-  if (next !== "archive") selectionTitle.reset();
+  selectionTitle.update({ animated: !prefs.reduced && next === "archive" });
+  if (next !== "archive") selectionTitle.finish();
   if (next === "detail" && mode !== "detail") recordAccess();
   mode = next;
   audio.setScene(next);
@@ -274,7 +283,7 @@ function updateSelection(navigation?: ArchiveNavigation) {
   const r = records[selected];
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
-  selectionTitle.update(r.title, !prefs.reduced && mode === "archive");
+  selectionTitle.update({ text: r.title, animated: !prefs.reduced && mode === "archive" });
   $("#selected-clearance").textContent = r.clearance;
   $("#archive-category").textContent = r.category;
   const direction =

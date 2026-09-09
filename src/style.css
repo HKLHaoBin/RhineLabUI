@@ -2024,37 +2024,11 @@ button {
   transition: none;
 }
 
-/* A stable strip replaces unreadable titles during rapid archive navigation. */
-.scrub-title {
-  display: inline-block;
-  position: relative;
-  white-space: nowrap;
+/* Use the same rolling engine as archive numbers, with quieter text blur. */
+#selected-title {
   flex: none;
-}
-.scrub-title::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 0.78em;
-  transform: translateY(-50%);
-  background: #191b16;
-  opacity: 0;
-  pointer-events: none;
-}
-.scrub-title[data-scrubbing="true"]::after {
-  opacity: 1;
-  animation: title-strip-appear 140ms steps(1, end);
-}
-@keyframes title-strip-appear {
-  0%,
-  70% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
+  --rn-blur: 0.2;
+  --rn-edge-fade: 0.08em;
 }
 /* Frame-driven opening: no elapsed CSS animation state when seeking/replaying. */
 [data-mode="boot"] .brand,
