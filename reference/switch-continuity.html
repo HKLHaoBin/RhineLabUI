@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <title>档案切换高度连续性</title>
+  <style>
+    body {
+      margin: 0;
+      background: #e8e5e1;
+      color: #252620;
+      font: 13px monospace;
+    }
+    #scene {
+      width: 960px;
+      height: 540px;
+    }
+    pre {
+      white-space: pre-wrap;
+      padding: 18px;
+    }
+  </style>
+  <div id="scene"></div>
+  <pre id="result">正在记录切换高度…</pre>
+  <script type="module">
+    import { ArchiveScene } from "/src/scene.ts";
+    import { columnFiles } from "/src/data.ts";
+    import { wrap } from "/src/archive-loop.ts";
+    import { PULSE_RESTORE_EPSILON } from "/src/archive-field.ts";
+    const s = new ArchiveScene(document.querySelector("#scene"));
+    await s.load();
+    const draw = s.composer.render.bind(s.composer);
+    s.composer.render = () => {};
+    let time = 0;
+    let index = 0;
+    const errors = [];
+    const expect = (v, m) => {
+      if (!v) errors.push(m);
+    };
+    const step = (count = 1) => {
+      for (let f = 0; f < count; f++) s.update((time += 1 / 60));
+    };
+    const move = (direction) => {
+      const files = columnFiles(((s.selectedCell.lane % 5) + 5) % 5);
+      index = files[wrap(files.indexOf(index) + direction, files.length)];
+      s.select(index, { axis: "row", direction });
+    };
+    const sampleSwitch = (direction, frames = 180) => {
+      move(direction);
+      const outgoing = [];
+      const selected = [];
+      for (let f = 0; f < frames; f++) {
+        step();
+        selected.push(s.model.position.y);
+        const copy = s.outgoing[0];
+        if (copy) outgoing.push(copy.group.position.y);
+      }
+      const start = outgoing[0];
+      let rise = 0;
+      for (const y of outgoing) rise = Math.max(rise, y - start);
+      let peak = -Infinity;
+      let drop = 0;
+      for (const y of selected) {
+        peak = Math.max(peak, y);
+        drop = Math.max(drop, peak - y);
+      }
+      return { rise, drop, outgoing: outgoing.length, selectedPeak: peak };
+    };
+    s.setMode("archive");
+    s.select(0);
+    step(300);
+    const next = sampleSwitch(1);
+    expect(
+      next.rise < PULSE_RESTORE_EPSILON,
+      "Returning file jumps up when switching to the next archive",
+    );
+    expect(
+      next.drop < 0.05,
+      "Newly selected file rises then falls after extraction",
+    );
+    step(300);
+    const previous = sampleSwitch(-1);
+    expect(
+      previous.rise < PULSE_RESTORE_EPSILON,
+      "Returning file jumps up when switching to the previous archive",
+    );
+    for (let i = 0; i < 8; i++) {
+      move(1);
+      step(6);
+    }
+    step(240);
+    expect(s.outgoing.length === 0, "Rapid switches leave returning copies");
+    const reversal = sampleSwitch(-1);
+    expect(
+      reversal.rise < PULSE_RESTORE_EPSILON,
+      "Returning file jumps up on a reverse switch",
+    );
+    step(300);
+    expect(s.getStats().returningFiles === 0, "Returning copies fail to settle");
+    document.querySelector("#result").textContent = JSON.stringify(
+      {
+        passed: errors.length === 0,
+        errors,
+        next,
+        previous,
+        reversal,
+        returningFiles: s.getStats().returningFiles,
+      },
+      null,
+      2,
+    );
+    draw();
+  </script>
+</html>

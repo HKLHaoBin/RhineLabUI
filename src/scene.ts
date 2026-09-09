@@ -29,18 +29,18 @@ import {
 } from "./archive-loop";
 import { labelMarkSvg } from "./brand";
 import {
-  archiveWave,
   extraction,
   baselineSelectionWave,
-  rippleEnvelope,
-  settlingWave,
   damp,
-  columnStrength,
-  idleWave,
   cinematicField,
   INSPECTION_LIFT,
   returnStep,
 } from "./motion";
+import {
+  archiveBed,
+  selectionRipple,
+  PULSE_RESTORE_EPSILON,
+} from "./archive-field";
 
 const ease = (t: number) => {
   t = THREE.MathUtils.clamp(t, 0, 1);
@@ -89,6 +89,7 @@ export class ArchiveScene {
     lift: { value: number; velocity: number };
     returnY: number | null;
     clarity: number;
+    bornAt: number;
   }[] = [];
   private pulses: { row: number; lane: number; time: number }[] = [];
   private pendingPulse: ArchiveCell | null = null;
@@ -195,9 +196,7 @@ export class ArchiveScene {
   async load(assetUrl = "/assets/archive-cassette.glb") {
     this.labelMark.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(labelMarkSvg)}`;
     await this.labelMark.decode();
-    const gltf = await new GLTFLoader().loadAsync(
-      assetUrl,
-    );
+    const gltf = await new GLTFLoader().loadAsync(assetUrl);
     gltf.scene.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
     gltf.scene.traverse((o) => {
@@ -419,7 +418,10 @@ export class ArchiveScene {
     };
   }
   setMode(mode: "hidden" | "archive" | "detail") {
-    if (mode === "detail") this.decryption.enter(this.scanBlend > .9 && this.decryption.clarity > .999);
+    if (mode === "detail")
+      this.decryption.enter(
+        this.scanBlend > 0.9 && this.decryption.clarity > 0.999,
+      );
     else this.decryption.leave();
     if (mode === "hidden") this.decryption.select();
     if (mode !== "archive") this.pendingPulse = null;
@@ -560,6 +562,7 @@ export class ArchiveScene {
         lift: { ...this.lift },
         returnY: group.rotation.y !== 0 ? group.position.y : null,
         clarity: this.decryption.clarity,
+        bornAt: this.clock,
       });
       this.lift.value = 0;
       this.lift.velocity = 0;
@@ -814,47 +817,47 @@ export class ArchiveScene {
       this.targetDetail || this.returnY !== null || aligningCopy ? 0 : 1,
       1 - Math.exp(-dt * 8),
     );
-    const field = (row: number, lane: number) => {
-      if (cinematic)
-        return cinematicField(
-          row,
-          lane,
-          shot,
-          this.shoulder.value,
-          this.laneFocus.value,
-        );
-      let height =
-        archiveWave(
-          row + this.coordinateOrigin.row,
-          lane + this.coordinateOrigin.lane,
-          this.scanTime,
-        ) *
-          this.scanBlend +
-        idleWave(
-          row + this.coordinateOrigin.row,
-          lane + this.coordinateOrigin.lane,
-          time,
-        ) *
-          this.idleGain;
-      if (!cinematic && !this.reduced) {
-        let ripple = 0;
-        for (const p of this.pulses) {
-          const distance = Math.hypot(row - p.row, (lane - p.lane) * 2.2);
-          const age = time - p.time;
-          ripple +=
-            this.selectionPulse(distance, age) *
-            (this.deferSelectionPulse ? rippleEnvelope(distance, age) : 1);
-        }
-        height += THREE.MathUtils.clamp(ripple, -0.6, 0.6) * this.pulseGain;
-      }
-      const distance = row - this.shoulder.value;
-      return (
-        height +
-        settlingWave(distance, 26.56) *
-          columnStrength(lane, this.laneFocus.value)
-      );
-    };
-    const selectedBase = chosen.y + field(selectedRow, selectedLane);
+    const bed = (row: number, lane: number) =>
+      cinematic
+        ? cinematicField(
+            row,
+            lane,
+            shot,
+            this.shoulder.value,
+            this.laneFocus.value,
+          )
+        : archiveBed(row, lane, {
+            originRow: this.coordinateOrigin.row,
+            originLane: this.coordinateOrigin.lane,
+            scanTime: this.scanTime,
+            scanBlend: this.scanBlend,
+            idleGain: cinematic ? 0 : this.idleGain,
+            time,
+            shoulder: this.shoulder.value,
+            laneFocus: this.laneFocus.value,
+          });
+    const ripple = (
+      row: number,
+      lane: number,
+      options?: { ignoreAfter?: number; ignoreSource?: boolean },
+    ) =>
+      cinematic || this.reduced
+        ? 0
+        : selectionRipple(row, lane, this.pulses, time, this.selectionPulse, {
+            envelope: this.deferSelectionPulse,
+            pulseGain: this.pulseGain,
+            ignoreAfter: options?.ignoreAfter,
+            ignoreCell: options?.ignoreSource
+              ? { row: selectedRow, lane: selectedLane }
+              : undefined,
+          });
+    const field = (
+      row: number,
+      lane: number,
+      options?: { ignoreAfter?: number; ignoreSource?: boolean },
+    ) => bed(row, lane) + ripple(row, lane, options);
+    const selectedBase =
+      chosen.y + field(selectedRow, selectedLane, { ignoreSource: true });
     if (!cinematic) {
       if (this.returnY !== null && this.rotation !== 0) {
         this.lift.value = this.returnY - selectedBase;
@@ -893,8 +896,12 @@ export class ArchiveScene {
       ? cinematic.zoom
       : THREE.MathUtils.lerp(this.detail, cameraTarget, blend);
     const detail = this.detail;
-    this.decryption.update(dt, detail > .78 && this.lift.value > 3.3, this.reduced,
-      cinematic ? shot + 5 : undefined);
+    this.decryption.update(
+      dt,
+      detail > 0.78 && this.lift.value > 3.3,
+      this.reduced,
+      cinematic ? shot + 5 : undefined,
+    );
     this.appearance.apply(this.model, ease(this.lift.value / 0.4));
     this.appearance.setClarity(this.model, this.decryption.clarity);
     // Reference 26.92–27.76: the array travels horizontally into a white field.
@@ -906,7 +913,10 @@ export class ArchiveScene {
     for (let i = this.outgoing.length - 1; i >= 0; i--) {
       const o = this.outgoing[i];
       const p = this.cellPosition(o.cell);
-      const baseY = p.y + field(o.cell.row, o.cell.lane);
+      const returningField = field(o.cell.row, o.cell.lane, {
+        ignoreAfter: o.bornAt,
+      });
+      const baseY = p.y + returningField;
       o.group.rotation.y = returnStep(o.group.rotation.y, dt, this.reduced);
       if (o.returnY !== null) {
         o.lift.value = o.returnY - baseY;
@@ -924,11 +934,17 @@ export class ArchiveScene {
       this.appearance.setClarity(o.group, o.clarity);
       const { row, lane } = o.cell;
       o.group.rotation.x =
-        (field(row + 0.5, lane) - field(row - 0.5, lane)) *
+        (field(row + 0.5, lane, { ignoreAfter: o.bornAt }) -
+          field(row - 0.5, lane, { ignoreAfter: o.bornAt })) *
         0.024 *
         (1 - detail) *
         (1 - quality);
-      if (o.lift.value < 0.0001 && Math.abs(o.group.rotation.y) < 0.0001) {
+      const arrayY = p.y + field(o.cell.row, o.cell.lane);
+      if (
+        o.lift.value < 0.0001 &&
+        Math.abs(o.group.rotation.y) < 0.0001 &&
+        Math.abs(arrayY - (baseY + o.lift.value)) < PULSE_RESTORE_EPSILON
+      ) {
         this.scene.remove(o.group);
         this.appearance.dispose(o.group);
         this.outgoing.splice(i, 1);
@@ -980,13 +996,15 @@ export class ArchiveScene {
     for (const inst of this.instances) inst.instanceMatrix.needsUpdate = true;
     this.model.position.set(
       chosen.x - trackX,
-      chosen.y + field(selectedRow, selectedLane) + this.lift.value,
+      chosen.y +
+        field(selectedRow, selectedLane, { ignoreSource: true }) +
+        this.lift.value,
       chosen.z + entryZ + this.rail.value,
     );
     // Extraction only changes elevation. Reframing belongs to the camera.
     this.model.rotation.set(
-      (field(selectedRow + 0.5, selectedLane) -
-        field(selectedRow - 0.5, selectedLane)) *
+      (field(selectedRow + 0.5, selectedLane, { ignoreSource: true }) -
+        field(selectedRow - 0.5, selectedLane, { ignoreSource: true })) *
         0.024 *
         (1 - detail) *
         (1 - ease(this.lift.value / 0.4)),
@@ -1194,8 +1212,12 @@ export class ArchiveScene {
       .project(this.camera);
     return [(p.x + 1) * 960, (1 - p.y) * 540];
   }
-  get decryptionFrame() { return this.decryption.frame; }
-  finishDecryption() { this.decryption.finish(); }
+  get decryptionFrame() {
+    return this.decryption.frame;
+  }
+  finishDecryption() {
+    this.decryption.finish();
+  }
   get detailVisibility() {
     return ease((this.detail - 0.25) / 0.55);
   }
@@ -1208,7 +1230,10 @@ export class ArchiveScene {
       return [Math.round((p.x + 1) * 960), Math.round((1 - p.y) * 540)];
     };
     return {
-      decryption: { ...this.decryption.frame, clarity: this.decryption.clarity },
+      decryption: {
+        ...this.decryption.frame,
+        clarity: this.decryption.clarity,
+      },
       topLeft: project(-2.5, 3.7, 0),
       topRight: project(2.5, 3.7, 0),
       labelTopLeft: project(-1.855, 3.27, 0.255),
