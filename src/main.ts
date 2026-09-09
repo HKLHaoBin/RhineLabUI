@@ -1,9 +1,17 @@
+import { InspectionOverlay } from "./inspection-overlay";
+import { DocumentDecryption } from "./document-decryption";
+import "./document-decryption.css";
+import "./decryption.css";
+import { escapeHtml } from "./html";
+import { normalizeQuality, qualityPresets, type QualityPreset, type RenderQuality } from "./render-quality";
+import { qualityMarkup, syncQualityUI } from "./quality-settings";
 import "@kitlangton/rolling-number/styles.css";
 import "./style.css";
-import { createRollingNumber } from "@kitlangton/rolling-number";
+import "./quality-settings.css";
+import { createRollingNumber, createRollingText } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
-import { ScrubTitle } from "./scrub-title";
+import { ContentTransition, SurfaceTransition } from "./ui-transitions";
 import { BootSequence } from "./boot";
 import { wrap, type ArchiveNavigation } from "./archive-loop";
 import {
@@ -14,17 +22,18 @@ import {
   fileLocation,
 } from "./data";
 import { TerminalAudio } from "./audio";
+import { audioSettingsMarkup } from "./audio-settings";
 import { publicUrl } from "./public-url";
 
 const $ = <T extends HTMLElement = HTMLElement>(selector: string) =>
   document.querySelector<T>(selector)!;
-import { logo } from "./brand";
+import { logo, brandHeading } from "./brand";
 
 $("#stage").innerHTML = `
   <div id="three-scene" class="three-scene"></div>
-  <div class="scene-atmosphere"></div>
+  <div class="scene-atmosphere archive-atmosphere"></div>
   <div id="boot-background" class="boot-background"><svg viewBox="0 0 1920 1080" preserveAspectRatio="none"><g fill="none" stroke="#fff" stroke-width="3"><path d="M-210 705C-45 705 182 704 247 567C337 377 99 306 4 435S27 680 169 631C309 584 227 314 279 111S568-113 568-113"/><path d="M1560-80C1374 114 1671 168 1601 323S1371 367 1431 480S1692 666 1559 787S1329 886 1498 1130"/><circle cx="1450" cy="648" r="346"/><circle cx="1450" cy="648" r="348"/></g></svg></div>
-  <header class="brand"><h1>RHINE LAB</h1><div>SYNTHESIZE INFORMATION</div><p>ANALYSIS <b>OS</b></p></header>
+  <header class="brand">${brandHeading}</header>
   <nav class="system-nav" aria-label="系统导航">
     <button data-action="search"><span class="nav-glyph">⌕</span> ARCHIVE INDEX <span class="key">/</span></button>
     <button data-action="saved" aria-label="查看收藏档案" title="收藏档案">＋ SAVED <span id="saved-count">00</span></button>
@@ -39,11 +48,11 @@ $("#stage").innerHTML = `
     <div class="welcome"><div class="welcome-panel"></div><div class="welcome-heading">WELCOME TO</div><div class="welcome-company"><strong>RHINE LAB.LLC.</strong><strong class="welcome-highlight" aria-hidden="true">RHINE LAB.LLC.</strong></div><div class="welcome-database">INTERNAL DATABASE</div><div class="welcome-logo">${logo}</div></div>
   </section>
   <div id="cinema-caption" class="cinema-caption"></div>
-  <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g></svg>
+  <svg id="inspection-marks" viewBox="0 0 1920 1080" aria-hidden="true"><path id="inspection-lines"/><g id="inspection-corners"></g><circle id="inspection-point" r="1.8"/></svg>
   <div id="inspection-text" aria-hidden="true">CONFIDENTIALITY:<strong>GENERAL BUSINESS USE</strong></div>
   <section id="archive-ui" class="archive-ui" aria-label="档案选择">
     <div class="archive-callout"><div class="eyebrow">INTERNAL DATABASE <span>／</span> <span id="archive-category">机构档案</span></div><button class="file-title" data-action="open">FILE NUMBER: <span id="selected-id">X-<span id="selected-code">001</span></span><span class="file-open">↗</span></button><div class="callout-rule"><i></i></div><div class="file-summary"><span id="selected-title">莱茵生命</span><span id="selected-clearance">BUSINESS AREA</span></div><button class="read-file" data-action="open">ACCESS FILE <span>→</span></button></div>
-    <div id="hover-label" class="hover-label" hidden>X-<span id="hover-code">001</span><span id="hover-title"></span></div>
+    <div id="hover-label" class="hover-label" hidden>X-<span id="hover-code">001</span> / <span id="hover-title"></span></div>
     <div class="archive-counter"><span class="tiny-label">ARCHIVE / SELECT</span><div><span id="selected-number">01</span><i>/</i><span class="count-total">12</span></div></div>
     <div class="archive-navigation"><button data-action="prev" aria-label="上一个档案">↑</button><div id="file-ticks" class="file-ticks"></div><button data-action="next" aria-label="下一个档案">↓</button></div>
     <div class="column-navigation"><button data-action="column-prev" aria-label="上一列">←</button><div><span id="column-number">COLUMN <span id="column-index">03</span> / 05</span><strong id="column-name">机构档案</strong></div><button data-action="column-next" aria-label="下一列">→</button></div>
@@ -98,6 +107,13 @@ if (reviewParams.get("review") === "1") {
 }
 let toastTimer: ReturnType<typeof setTimeout>;
 let previousFocus: HTMLElement | null = null;
+const detailTransition = new SurfaceTransition($("#detail-ui"), undefined, 180, 180);
+const tabTransition = new ContentTransition();
+let modalTransition: SurfaceTransition | undefined;
+let modalClosing = false;
+let modalSiblings: { node: HTMLElement; inert: boolean }[] = [];
+let pendingDetailFocus = false;
+let bookmarkFeedback: Animation | undefined;
 function readLocal<T>(key: string, fallback: T): T {
   try {
     return JSON.parse(localStorage.getItem(key) ?? "null") ?? fallback;
@@ -105,40 +121,27 @@ function readLocal<T>(key: string, fallback: T): T {
     return fallback;
   }
 }
-type Prefs = {
-  sfx: boolean;
-  music: boolean;
-  sfxVolume: number;
-  musicVolume: number;
-  reduced: boolean;
-  quality: boolean;
-};
-function clamp01(value: number) {
-  return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
-}
-function loadPrefs(): Prefs {
-  const raw = readLocal<Record<string, unknown>>("rhine-settings", {});
-  const legacyOn = raw.sound !== false;
-  return {
-    sfx: typeof raw.sfx === "boolean" ? raw.sfx : legacyOn,
-    music: typeof raw.music === "boolean" ? raw.music : legacyOn,
-    sfxVolume: clamp01(typeof raw.sfxVolume === "number" ? raw.sfxVolume : 1),
-    musicVolume: clamp01(typeof raw.musicVolume === "number" ? raw.musicVolume : 1),
-    reduced:
-      typeof raw.reduced === "boolean"
-        ? raw.reduced
-        : matchMedia("(prefers-reduced-motion: reduce)").matches,
-    quality: typeof raw.quality === "boolean" ? raw.quality : true,
-  };
-}
 const saved = new Set<string>(readLocal<string[]>("rhine-saved", []));
-const prefs = loadPrefs();
-const numberOptions = {
-  locales: "en-US",
-  format: { minimumIntegerDigits: 2, useGrouping: false },
+const storedPrefs = readLocal<Partial<{ sound: boolean; music: boolean; soundVolume: number; musicVolume: number; reduced: boolean; quality: boolean; rendering: RenderQuality }>>("rhine-settings", {});
+const prefs = {
+  sound: true,
+  music: storedPrefs.sound ?? true,
+  soundVolume: .55,
+  musicVolume: .5,
+  reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
+  quality: true,
+  ...storedPrefs,
+  rendering: normalizeQuality(storedPrefs.rendering, storedPrefs.quality !== false),
+};
+const rollingMotion = {
   duration: 460,
   motionBlur: true,
   animated: !prefs.reduced,
+};
+const numberOptions = {
+  ...rollingMotion,
+  locales: "en-US",
+  format: { minimumIntegerDigits: 2, useGrouping: false },
 };
 const fileCounter = createRollingNumber($("#selected-number"), {
   ...numberOptions,
@@ -153,14 +156,34 @@ const codeOptions = {
   format: { minimumIntegerDigits: 3, useGrouping: false },
   value: 1,
 };
-const selectionTitle = new ScrubTitle($("#selected-title"));
+const textOptions = {
+  ...rollingMotion,
+  transition: "direct" as const,
+  stagger: "none" as const,
+};
+const selectionTitle = createRollingText($("#selected-title"), {
+  ...textOptions,
+  text: $("#selected-title").textContent ?? "",
+});
+const columnTitle = createRollingText($("#column-name"), {
+  ...textOptions,
+  text: $("#column-name").textContent ?? "",
+});
+const hoverTitle = createRollingText($("#hover-title"), { ...textOptions, text: "" });
+const categoryTitle = createRollingText($("#archive-category"), {
+  ...textOptions,
+  text: $("#archive-category").textContent ?? "",
+});
+const clearanceTitle = createRollingText($("#selected-clearance"), {
+  ...textOptions,
+  text: $("#selected-clearance").textContent ?? "",
+});
+const rollingTitles = [selectionTitle, columnTitle, hoverTitle, categoryTitle, clearanceTitle];
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
-audio.apply(prefs);
-const unlockAudio = () => audio.prime();
-window.addEventListener("pointerdown", unlockAudio);
-window.addEventListener("keydown", unlockAudio);
+audio.configure(prefs);
+let audioPreview = false, audioPreviewRequest = 0;
 let scene: ArchiveScene;
 let viewer: ModelViewer | undefined;
 const accessLog: { id: string; time: string }[] = [];
@@ -171,15 +194,28 @@ function recordAccess() {
     time: new Date().toLocaleTimeString("en-GB"),
   });
 }
-function savePrefs() {
+function saveAudioPrefs() {
   try {
     localStorage.setItem("rhine-settings", JSON.stringify(prefs));
   } catch {}
-  audio.apply(prefs);
-  if (prefs.reduced) selectionTitle.reset();
+  audio.configure(prefs);
+}
+function savePrefs() {
+  saveAudioPrefs();
+  if (prefs.reduced) {
+    rollingTitles.forEach(title => title.finish());
+    detailTransition.finish();
+    modalTransition?.finish();
+    tabTransition.cancel();
+    bookmarkFeedback?.cancel();
+  }
   scene?.setReduced(prefs.reduced);
-  scene?.setQuality(prefs.quality);
+  scene?.setQuality(prefs.rendering);
+  viewer?.setQuality(prefs.rendering);
+  syncQualityUI(prefs.rendering);
+  updateQualitySummary();
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
+  rollingTitles.forEach(title => title.update({ animated: !prefs.reduced && mode === "archive" }));
   columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
   selectedCode.update({ animated: !prefs.reduced && mode === "archive" });
   hoverCode.update({ animated: !prefs.reduced && mode === "archive" });
@@ -191,28 +227,49 @@ function fit() {
   $("#viewport").style.setProperty("--scale", String(scale));
   scene?.resize();
   viewer?.resize();
+  updateQualitySummary();
 }
 window.addEventListener("resize", fit);
 fit();
-$("#file-ticks").innerHTML = records
+$("#file-ticks").innerHTML = columnFiles(fileLocation(selected).lane)
   .map(
-    (r, i) =>
-      `<button data-select="${i}" aria-label="选择档案 ${r.id} ${r.title}" title="${r.id} · ${r.title}"></button>`,
+    (index) => `<button data-select="${index}"></button>`,
   )
   .join("");
+const fileTicks = [...$("#file-ticks").querySelectorAll<HTMLButtonElement>("button")];
 
 function setMode(next: Mode) {
-  if (next !== "archive") selectionTitle.reset();
+  const previousMode = mode;
+  rollingTitles.forEach(title => title.update({ animated: !prefs.reduced && next === "archive" }));
+  if (next !== "archive") {
+    rollingTitles.forEach(title => title.finish());
+    hoverCode.finish();
+    $("#hover-label").hidden = true;
+  }
   if (next === "detail" && mode !== "detail") recordAccess();
   mode = next;
+  audio.setScene(next);
+  if (next !== "boot" && audioPreview) {
+    audioPreview = false;
+    audioPreviewRequest++;
+    audio.configure(prefs);
+  }
   $("#stage").dataset.mode = next;
   $("#boot").inert = next !== "boot";
   $("#boot").setAttribute("aria-hidden", String(next !== "boot"));
-  $("#archive-ui").inert = next !== "archive";
+  $("#archive-ui").inert = next !== "archive" || Boolean(modal);
   $("#archive-ui").setAttribute("aria-hidden", String(next !== "archive"));
-  $(".system-nav").inert = next === "boot";
-  $(".system-footer").inert = next === "boot";
-  $("#detail-ui").hidden = next !== "detail";
+  $(".system-nav").inert = next === "boot" || Boolean(modal);
+  $(".system-footer").inert = next === "boot" || Boolean(modal);
+  if (next === "detail") {
+    if (previousMode !== "detail") detailTransition.show(prefs.reduced);
+  } else if (previousMode === "detail" || (next === "boot" && !$("#detail-ui").hidden)) {
+    pendingDetailFocus = false;
+    tabTransition.cancel();
+    detailTransition.hide(prefs.reduced || next === "boot");
+    if (!modal && next === "archive") $(".read-file").focus({ preventScroll: true });
+  }
+  $("#detail-ui").inert = next !== "detail" || Boolean(modal);
   scene?.setMode(next === "boot" ? "hidden" : next);
   if (next !== "boot") {
     bootSequence.reset();
@@ -220,7 +277,10 @@ function setMode(next: Mode) {
     $("#stage").dataset.boot = "done";
     $("#cinema-caption").textContent = "";
   }
-  if (next === "detail") renderDetail();
+  if (next === "detail" && previousMode !== "detail") {
+    renderDetail();
+    pendingDetailFocus = true;
+  }
 }
 function select(index: number, navigation?: ArchiveNavigation) {
   selected = (index + records.length) % records.length;
@@ -229,7 +289,8 @@ function select(index: number, navigation?: ArchiveNavigation) {
   activeTab = "overview";
   scene?.select(selected, navigation);
   updateSelection(navigation);
-  audio.play("tick");
+  const columnMove = navigation && "axis" in navigation && navigation.axis === "lane";
+  audio.play(columnMove ? "column" : "tick", columnMove ? navigation.direction * .45 : 0);
 }
 function stepFile(direction: number) {
   const files = columnFiles(fileLocation(selected).lane);
@@ -248,9 +309,9 @@ function updateSelection(navigation?: ArchiveNavigation) {
   const r = records[selected];
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
-  selectionTitle.update(r.title, !prefs.reduced && mode === "archive");
-  $("#selected-clearance").textContent = r.clearance;
-  $("#archive-category").textContent = r.category;
+  selectionTitle.update({ text: r.title, animated: !prefs.reduced && mode === "archive" });
+  clearanceTitle.update({ text: r.clearance, animated: !prefs.reduced && mode === "archive" });
+  categoryTitle.update({ text: r.category, animated: !prefs.reduced && mode === "archive" });
   const direction =
     navigation && "axis" in navigation
       ? navigation.direction > 0
@@ -279,31 +340,40 @@ function updateSelection(navigation?: ArchiveNavigation) {
         ? direction
         : "auto",
   });
-  $("#column-name").textContent = archiveColumns[lane];
+  columnTitle.update({ text: archiveColumns[lane], animated: !prefs.reduced && mode === "archive" });
   $<HTMLButtonElement>('[data-action="column-prev"]').disabled = false;
   $<HTMLButtonElement>('[data-action="column-next"]').disabled = false;
-  document.querySelectorAll("[data-select]").forEach((b) => {
-    (b as HTMLElement).hidden = !files.includes(
-      Number((b as HTMLElement).dataset.select),
-    );
-    b.classList.toggle(
-      "selected",
-      Number((b as HTMLElement).dataset.select) === selected,
-    );
-    b.setAttribute(
-      "aria-pressed",
-      String(Number((b as HTMLElement).dataset.select) === selected),
-    );
+  fileTicks.forEach((button, slot) => {
+    const index = files[slot], record = records[index];
+    button.dataset.select = String(index);
+    button.setAttribute("aria-label", `选择档案 ${record.id} ${record.title}`);
+    button.title = `${record.id} · ${record.title}`;
+    button.classList.toggle("selected", index === selected);
+    button.setAttribute("aria-pressed", String(index === selected));
   });
   $("#saved-count").textContent = String(saved.size).padStart(2, "0");
-  if (mode === "detail") renderDetail();
+}
+function replayBoot(forcePreview = false) {
+  if (!ready) return;
+  closeModal(() => replayBootAfterModal(forcePreview));
+}
+function replayBootAfterModal(forcePreview: boolean) {
+  bootStart = performance.now() / 1000 - 1.76;
+  frozenTime = null;
+  lastStep = "";
+  setMode(prefs.reduced && !forcePreview ? "archive" : "boot");
+  audio.restartBoot();
+  scene.select(0);
+  selected = 0;
+  updateSelection();
+  if (!forcePreview) audio.play("ui-tick");
 }
 function openFile() {
   if (!ready) return;
-  closeModal();
-  setMode("detail");
-  audio.play("open");
-  $("#detail-content").focus({ preventScroll: true });
+  closeModal(() => {
+    setMode("detail");
+    audio.play("open");
+  });
 }
 function toggleSaved() {
   const id = records[selected].id;
@@ -312,32 +382,43 @@ function toggleSaved() {
   try {
     localStorage.setItem("rhine-saved", JSON.stringify([...saved]));
   } catch {}
-  updateSelection();
-  $<HTMLButtonElement>('[data-action="bookmark"]').focus({
-    preventScroll: true,
-  });
+  $("#saved-count").textContent = String(saved.size).padStart(2, "0");
+  const button = $<HTMLButtonElement>('[data-action="bookmark"]');
+  const added = saved.has(id);
+  button.firstChild!.textContent = added ? "− REMOVE FROM SAVED" : "＋ SAVE ARCHIVE";
+  button.querySelector("span")!.textContent = added ? "已收藏" : "收藏档案";
+  button.setAttribute("aria-pressed", String(added));
+  bookmarkFeedback?.cancel();
+  if (!prefs.reduced) bookmarkFeedback = button.animate(
+    [{ backgroundColor: "#67634c" }, { backgroundColor: "#252820" }],
+    { duration: 220, easing: "ease-out" },
+  );
   audio.play("confirm");
   notify(saved.has(id) ? "档案已加入收藏" : "已取消收藏");
 }
 function renderDetail() {
+  tabTransition.cancel();
   const r = records[selected];
   $("#object-id").textContent = "NO." + String(selected + 1).padStart(3, "0");
   $("#detail-content").innerHTML = `
-  <div class="detail-kicker"><span>FILE ${r.id}</span><span>${r.clearance}</span></div>
-  <h2>${r.en}</h2><div class="detail-title-cn">${r.title}<span>${r.category}</span></div>
+  <div class="detail-kicker"><span>FILE ${r.id}</span><span>${escapeHtml(r.clearance)}</span></div>
+  <h2>${escapeHtml(r.en)}</h2><div class="detail-title-cn">${escapeHtml(r.title)}<span>${escapeHtml(r.category)}</span></div>
   <div class="detail-rule"></div>
-  <dl class="metadata"><div><dt>DEPARTMENT / 科室</dt><dd>${r.department}</dd></div><div><dt>COLLECTION / 编目范围</dt><dd>${r.date}</dd></div><div><dt>RELATED / 相关人物</dt><dd>${r.lead}</dd></div><div><dt>STATUS / 状态</dt><dd><i></i>${r.clearance === "RESTRICTED" ? "目录访问" : "已归档 · 可读取"}</dd></div></dl>
-  <div class="detail-tabs" role="tablist"><button class="active" role="tab" aria-selected="true" data-tab="overview">01 <span>概述</span></button><button role="tab" aria-selected="false" data-tab="notes">02 <span>研究记录</span></button><button role="tab" aria-selected="false" data-tab="history">03 <span>访问日志</span></button></div>
+  <dl class="metadata"><div><dt>DEPARTMENT / 科室</dt><dd>${escapeHtml(r.department)}</dd></div><div><dt>COLLECTION / 编目范围</dt><dd>${escapeHtml(r.date)}</dd></div><div><dt>RELATED / 相关人物</dt><dd>${escapeHtml(r.lead)}</dd></div><div><dt>STATUS / 状态</dt><dd><i></i>${r.clearance === "RESTRICTED" ? "目录访问" : "已归档 · 可读取"}</dd></div></dl>
+  <div class="detail-tabs" role="tablist"><button id="tab-overview" class="active" role="tab" aria-controls="tab-panel" aria-selected="true" data-tab="overview">01 <span>概述</span></button><button id="tab-notes" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="notes">02 <span>研究记录</span></button><button id="tab-history" role="tab" aria-controls="tab-panel" aria-selected="false" data-tab="history">03 <span>访问日志</span></button><i class="tab-indicator" aria-hidden="true"></i></div>
   <div id="tab-panel" class="tab-panel" role="tabpanel">${overview()}</div>
   <div class="detail-actions"><button class="solid-button" data-action="bookmark">${saved.has(r.id) ? "− REMOVE FROM SAVED" : "＋ SAVE ARCHIVE"}<span>${saved.has(r.id) ? "已收藏" : "收藏档案"}</span></button><a class="export-button" href="${publicUrl(`archives/RHINE-LAB-${r.id}.txt`)}" download="RHINE-LAB-${r.id}.txt" aria-label="导出 ${r.id} 档案">EXPORT <span>↓</span></a></div>
-  <div class="detail-footnote"><a href="${r.source}" target="_blank" rel="noopener">设定参考 ↗</a><span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
+  <div class="detail-footnote"><a href="${escapeHtml(r.source)}" target="_blank" rel="noopener">设定参考 ↗</a><span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
   $("#detail-content").setAttribute("tabindex", "-1");
+  $('[data-action="bookmark"]').setAttribute("aria-pressed", String(saved.has(r.id)));
+  documentDecryption.reset($("#detail-content"), prefs.reduced || scene.decryptionFrame.phase === "clear");
   setTab(activeTab, false);
 }
 function overview() {
-  return `<div class="panel-label">ABSTRACT / 摘要</div><p>${records[selected].abstract}</p>`;
+  return `<div class="panel-label">ABSTRACT / 摘要</div><p>${escapeHtml(records[selected].abstract)}</p>`;
 }
 function setTab(tab: string, sound = true) {
+  if (sound && tab === activeTab) return;
   activeTab = tab;
   document.querySelectorAll("[data-tab]").forEach((b) => {
     const active = (b as HTMLElement).dataset.tab === tab;
@@ -346,11 +427,16 @@ function setTab(tab: string, sound = true) {
     b.setAttribute("tabindex", active ? "0" : "-1");
   });
   const r = records[selected];
+  const tabButton = $<HTMLButtonElement>(`[data-tab="${tab}"]`);
+  const indicator = $(".tab-indicator");
+  indicator.style.transition = sound ? "" : "none";
+  indicator.style.transform = `translateX(${tabButton.offsetLeft}px) scaleX(${tabButton.offsetWidth})`;
+  $("#tab-panel").setAttribute("aria-labelledby", tabButton.id);
   $("#tab-panel").innerHTML =
     tab === "overview"
       ? overview()
       : tab === "notes"
-        ? `<div class="panel-label">RESEARCH NOTES / 研究记录</div><ol class="research-notes">${r.findings.map((f, i) => `<li><span>${String(i + 1).padStart(2, "0")}</span>${f}</li>`).join("")}</ol>`
+        ? `<div class="panel-label">RESEARCH NOTES / 研究记录</div><ol class="research-notes">${r.findings.map((f, i) => `<li><span>${String(i + 1).padStart(2, "0")}</span>${escapeHtml(f)}</li>`).join("")}</ol>`
         : `<div class="panel-label">ACCESS LOG / 本次访问</div>${accessLog
             .filter((entry) => entry.id === r.id)
             .slice(0, 4)
@@ -361,7 +447,12 @@ function setTab(tab: string, sound = true) {
             .join(
               "",
             )}<p class="log-note">本次会话已通过身份验证。档案内容以当前终端可访问范围展示。</p>`;
-  if (sound) audio.play("tick");
+  $("#tab-panel").scrollTop = 0;
+  documentDecryption.refresh();
+  if (sound) {
+    tabTransition.reveal($("#tab-panel"), prefs.reduced);
+    audio.play("ui-tick");
+  }
 }
 function notify(message: string) {
   clearTimeout(toastTimer);
@@ -372,30 +463,60 @@ function notify(message: string) {
 
 function openModal(kind: NonNullable<typeof modal>) {
   if (!ready) return;
-  previousFocus = document.activeElement as HTMLElement;
+  if (!modal) {
+    previousFocus = document.activeElement as HTMLElement;
+    modalSiblings = [...$("#stage").children]
+      .filter((node): node is HTMLElement => node instanceof HTMLElement && node.id !== "modal-root")
+      .map((node) => ({ node, inert: node.inert }));
+    modalSiblings.forEach(({ node }) => (node.inert = true));
+  }
+  modalClosing = false;
   modal = kind;
   searchQuery = "";
   filter = "全部档案";
-  audio.play("open");
+  audio.play("page-open");
   renderModal();
 }
-function closeModal() {
-  if (!modal) return;
-  modal = null;
-  $("#modal-root").innerHTML = "";
-  previousFocus?.focus({ preventScroll: true });
+function closeModal(afterClose?: () => void) {
+  if (!modal) {
+    afterClose?.();
+    return;
+  }
+  if (modalClosing) return;
+  modalClosing = true;
+  audio.play("page-close");
+  modalTransition!.hide(prefs.reduced, () => {
+    modal = null;
+    modalClosing = false;
+    $("#modal-root").replaceChildren();
+    modalTransition = undefined;
+    modalSiblings.forEach(({ node, inert }) => (node.inert = inert));
+    modalSiblings = [];
+    $("#archive-ui").inert = mode !== "archive";
+    $("#detail-ui").inert = mode !== "detail";
+    previousFocus?.focus({ preventScroll: true });
+    afterClose?.();
+  });
 }
 function renderModal() {
   if (!modal) return;
+  modalTransition?.dispose();
   $("#modal-root").innerHTML =
-    `<div class="modal-backdrop"><section class="terminal-modal ${modal === "settings" ? "settings-modal" : ""}" role="dialog" aria-modal="true" aria-label="${modal === "settings" ? "系统设置" : modal === "saved" ? "收藏档案" : "档案检索"}"><div class="modal-top"><span>RHINE LAB / ${modal === "settings" ? "SYSTEM PREFERENCES" : "ARCHIVE DIRECTORY"}</span><button data-action="close-modal" aria-label="关闭窗口">CLOSE <span>×</span></button></div>${modal === "settings" ? settingsMarkup() : `<h2>${modal === "saved" ? "SAVED ARCHIVES" : "ARCHIVE INDEX"}<small>${modal === "saved" ? "收藏档案" : "内部档案检索"}</small></h2><div class="search-field"><span>⌕</span><input id="archive-search" type="search" autocomplete="off" placeholder="输入档案编号、名称或科室" aria-label="检索档案"/><span class="key">ESC</span></div><div class="category-filters">${categories.map((c, i) => `<button data-filter="${c}" class="${i === 0 ? "active" : ""}">${c}</button>`).join("")}</div><div class="result-header"><span>FILE / 档案</span><span>DEPARTMENT / 科室</span><span>ACCESS</span></div><div id="search-results" class="search-results"></div><div class="modal-bottom"><span id="result-count"></span><span>INTERNAL DATABASE <i>●</i> CONNECTED</span></div>`}</section></div>`;
+    `<div class="modal-backdrop"><section class="terminal-modal ${modal === "settings" ? "settings-modal" : ""}" role="dialog" aria-modal="true" aria-label="${modal === "settings" ? "系统设置" : modal === "saved" ? "收藏档案" : "档案检索"}"><div class="modal-top"><span>RHINE LAB / ${modal === "settings" ? "SYSTEM PREFERENCES" : "ARCHIVE DIRECTORY"}</span><button data-action="close-modal" aria-label="关闭窗口">CLOSE <span>×</span></button></div>${modal === "settings" ? settingsMarkup() : `<h2>${modal === "saved" ? "SAVED ARCHIVES" : "ARCHIVE INDEX"}<small>${modal === "saved" ? "收藏档案" : "内部档案检索"}</small></h2><div class="search-field"><span>⌕</span><input id="archive-search" type="search" autocomplete="off" placeholder="输入档案编号、名称或科室" aria-label="检索档案"/><span class="key">ESC</span></div><div class="category-filters">${categories.map((c, i) => `<button data-filter="${escapeHtml(c)}" class="${i === 0 ? "active" : ""}">${escapeHtml(c)}</button>`).join("")}</div><div class="result-header"><span>FILE / 档案</span><span>DEPARTMENT / 科室</span><span>ACCESS</span></div><div id="search-results" class="search-results"></div><div class="modal-bottom"><span id="result-count"></span><span>INTERNAL DATABASE <i>●</i> CONNECTED</span></div>`}</section></div>`;
+  const backdrop = $(".modal-backdrop");
+  backdrop.hidden = true;
+  modalTransition = new SurfaceTransition(backdrop, $(".terminal-modal"));
+  modalTransition.show(prefs.reduced);
+  if (modal === "settings") updateQualitySummary();
   if (modal !== "settings") {
     renderResults();
-    requestAnimationFrame(() => $("#archive-search").focus());
+    requestAnimationFrame(() => {
+      if (backdrop.isConnected && !modalClosing) $("#archive-search").focus();
+    });
   } else
-    requestAnimationFrame(() =>
-      $<HTMLButtonElement>('[data-action="close-modal"]').focus(),
-    );
+    requestAnimationFrame(() => {
+      if (backdrop.isConnected && !modalClosing) $('[data-action="close-modal"]').focus();
+    });
   $("#modal-root")
     .querySelector(".modal-backdrop")
     ?.addEventListener("click", (e) => {
@@ -417,43 +538,60 @@ function renderResults() {
     ? results
         .map(
           ({ r, i }) =>
-            `<button class="result-row" data-result="${i}"><span class="result-name"><b>${r.id}</b><span>${r.title}<small>${r.en}</small></span>${saved.has(r.id) ? "<i>＋</i>" : ""}</span><span>${r.department}</span><span>${r.clearance === "RESTRICTED" ? "CATALOG ONLY" : "AUTHORIZED"} <i>↗</i></span></button>`,
+            `<button class="result-row" data-result="${i}"><span class="result-name"><b>${r.id}</b><span>${escapeHtml(r.title)}<small>${escapeHtml(r.en)}</small></span>${saved.has(r.id) ? "<i>＋</i>" : ""}</span><span>${escapeHtml(r.department)}</span><span>${r.clearance === "RESTRICTED" ? "CATALOG ONLY" : "AUTHORIZED"} <i>↗</i></span></button>`,
         )
         .join("")
     : `<div class="empty-results"><span>∅</span><strong>${modal === "saved" && !searchQuery ? "尚无收藏档案" : "没有匹配的档案"}</strong><p>${modal === "saved" && !searchQuery ? "读取档案时，选择 SAVE ARCHIVE 将其保存在此处。" : "尝试其他名称、档案编号，或切换科室分类。"}</p><button data-action="reset-search">${modal === "saved" ? "查看全部档案 →" : "重置检索 →"}</button></div>`;
   $("#result-count").textContent =
     `${String(results.length).padStart(2, "0")} RECORDS FOUND`;
 }
+function updateQualitySummary() {
+  const summary = document.querySelector("#quality-summary");
+  if (!summary || !scene) return;
+  const canvas = scene.renderer.domElement;
+  const metrics = JSON.parse(canvas.parentElement?.dataset.renderQuality ?? "{}");
+  summary.textContent = `实际渲染 ${canvas.width} × ${canvas.height} · ${prefs.rendering.antialias === "smaa" ? "SMAA" : "原始抗锯齿"} · 纹理 ${metrics.anisotropy ?? 1}×${metrics.limited ? " · 已达到缓冲上限" : ""}`;
+}
 function settingsMarkup() {
-  const sfxVol = Math.round(prefs.sfxVolume * 100);
-  const musicVol = Math.round(prefs.musicVolume * 100);
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><div class="settings-row settings-audio"><div><strong>INTERFACE TICKS</strong><span>点击与操作提示音</span></div><div class="settings-audio-controls"><input type="range" min="0" max="100" step="1" data-vol="sfxVolume" value="${sfxVol}" aria-label="点击音效音量"/><label class="settings-toggle-wrap"><input type="checkbox" data-pref="sfx" ${prefs.sfx ? "checked" : ""} aria-label="点击音效"/><i class="toggle"></i></label></div></div><div class="settings-row settings-audio"><div><strong>BACKGROUND PAD</strong><span>环境正弦铺垫，循环无接缝</span></div><div class="settings-audio-controls"><input type="range" min="0" max="100" step="1" data-vol="musicVolume" value="${musicVol}" aria-label="背景音乐音量"/><label class="settings-toggle-wrap"><input type="checkbox" data-pref="music" ${prefs.music ? "checked" : ""} aria-label="背景音乐"/><i class="toggle"></i></label></div></div><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>HIGH QUALITY RENDERING</strong><span>环境遮蔽与高分辨率渲染</span></div><input type="checkbox" data-pref="quality" ${prefs.quality ? "checked" : ""}/><i class="toggle"></i></label></div><div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${publicUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list">${audioSettingsMarkup(prefs)}<label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label></div>${qualityMarkup(prefs.rendering)}<div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="${publicUrl("fonts/MiSans-license.pdf")}" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
-function applyVolumeInput(el: HTMLInputElement) {
-  const key = el.dataset.vol;
-  if (key !== "sfxVolume" && key !== "musicVolume") return;
-  prefs[key] = clamp01(Number(el.value) / 100);
-  savePrefs();
-}
 document.addEventListener("input", (e) => {
-  const el = e.target as HTMLInputElement;
-  if (el.id === "archive-search") {
-    searchQuery = el.value;
+  const slider = e.target as HTMLInputElement;
+  if (slider.dataset.quality) {
+    const output = document.querySelector<HTMLOutputElement>(`[data-quality-output="${slider.dataset.quality}"]`);
+    if (output) output.value = `${slider.value}%`;
+  }
+  const volume = e.target as HTMLInputElement;
+  if (volume.dataset.volume === "musicVolume" || volume.dataset.volume === "soundVolume") {
+    prefs[volume.dataset.volume] = Number(volume.value) / 100;
+    volume.closest("label")?.querySelector("output")?.replaceChildren(`${volume.value}%`);
+    saveAudioPrefs();
+  }
+  if ((e.target as HTMLElement).id === "archive-search") {
+    searchQuery = (e.target as HTMLInputElement).value;
     renderResults();
   }
-  if (el.dataset.vol) applyVolumeInput(el);
 });
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
-  const key = el.dataset.pref;
-  if (key === "sfx" || key === "music" || key === "reduced" || key === "quality") {
-    prefs[key] = el.checked;
+  if (el.id === "quality-preset" && Object.hasOwn(qualityPresets, el.value)) {
+    prefs.rendering = { ...qualityPresets[el.value as QualityPreset] };
     savePrefs();
+  } else if (el.dataset.quality) {
+    const key = el.dataset.quality as keyof RenderQuality;
+    prefs.rendering = normalizeQuality({ ...prefs.rendering, [key]: key === "antialias" ? el.value : Number(el.value) });
+    savePrefs();
+  }
+  if (el.dataset.pref) {
+    const key = el.dataset.pref;
+    if (key === "sound" || key === "music" || key === "reduced" || key === "quality") prefs[key] = el.checked;
+    if (key === "sound" || key === "music") saveAudioPrefs(); else savePrefs();
     audio.play("confirm");
   }
 });
 document.addEventListener("click", (e) => {
+  if (modalClosing) return;
   const el = (e.target as Element).closest<HTMLElement>("button");
   if (!el) return;
   if (el.dataset.select) {
@@ -461,8 +599,11 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (el.dataset.result) {
-    select(Number(el.dataset.result));
-    openFile();
+    const index = Number(el.dataset.result);
+    closeModal(() => {
+      select(index);
+      openFile();
+    });
     return;
   }
   if (el.dataset.filter) {
@@ -483,6 +624,7 @@ document.addEventListener("click", (e) => {
     return;
   }
   const action = el.dataset.action;
+  if (action === "sound-preview") audio.play("confirm");
   if (action === "skip") {
     setMode("archive");
     audio.play("confirm");
@@ -493,14 +635,17 @@ document.addEventListener("click", (e) => {
   if (action === "column-next") stepColumn(1);
   if (action === "open") openFile();
   if (action === "model-viewer" && mode === "detail") {
-    viewer ??= new ModelViewer($("#stage"), () => audio.play("back"));
+    viewer ??= new ModelViewer($("#stage"), () => { audio.setScene(mode); audio.play("page-close"); }, (sound) => audio.play(sound === "tick" ? "ui-tick" : sound));
+    audio.setScene("viewer");
+    viewer.setQuality(prefs.rendering);
+    scene.finishDecryption();
     viewer.open(
       records[selected].id,
       records[selected].title,
       () => scene.createAssemblyModel(),
       prefs.reduced,
     );
-    audio.play("open");
+    audio.play("page-open");
   }
   if (action === "back") {
     setMode("archive");
@@ -517,15 +662,7 @@ document.addEventListener("click", (e) => {
     renderModal();
   }
   if (action === "replay" || action === "restart") {
-    closeModal();
-    bootStart = performance.now() / 1000 - 1.76;
-    frozenTime = null;
-    lastStep = "";
-    setMode(prefs.reduced ? "archive" : "boot");
-    scene.select(0);
-    selected = 0;
-    updateSelection();
-    audio.play("back");
+    replayBoot();
   }
   if (action === "fullscreen") {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -537,21 +674,25 @@ document.addEventListener("click", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (viewer?.isOpen) return;
+  if (modalClosing) {
+    e.preventDefault();
+    return;
+  }
   const typing = e.target instanceof HTMLInputElement;
   if (e.key === "Escape") {
     if (modal) closeModal();
-    else if (mode === "detail") setMode("archive");
-    else if (mode === "boot" && ready) setMode("archive");
+    else if (mode === "detail" || (mode === "boot" && ready)) { const sound = mode === "detail" ? "back" : "ui-tick"; setMode("archive"); audio.play(sound); }
     return;
   }
   if (modal && e.key === "Tab") {
     const focusables = [
       ...$("#modal-root").querySelectorAll<HTMLElement>(
-        'button,input,[tabindex="0"]',
+        'button,input:not(:disabled),select:not(:disabled),summary,[tabindex="0"]',
       ),
     ];
-    const first = focusables[0],
-      last = focusables.at(-1);
+    const visible = focusables.filter(el => el.getClientRects().length > 0);
+    const first = visible[0],
+      last = visible.at(-1);
     if (e.shiftKey && document.activeElement === first) {
       e.preventDefault();
       last?.focus();
@@ -611,6 +752,7 @@ const ease = (t: number) => {
   return t * t * (3 - 2 * t);
 };
 function bootFrame(t: number) {
+  audio.updateBoot(t, frozenTime !== null);
   const motion = bootSequence.update(t);
   let step: string = motion.step;
   let caption =
@@ -640,8 +782,6 @@ function bootFrame(t: number) {
   if (step !== lastStep) {
     $("#stage").dataset.boot = step;
     lastStep = step;
-    if (["auth", "scan", "select"].includes(step))
-      audio.play(step === "scan" ? "confirm" : "tick");
   }
   $("#cinema-caption").textContent = caption;
   $(".file-title").firstChild!.textContent =
@@ -663,6 +803,9 @@ function bootFrame(t: number) {
   return { reveal, lift, zoom, time: t };
 }
 
+const inspectionOverlay = new InspectionOverlay();
+const documentDecryption = new DocumentDecryption();
+
 let lastTime = 0,
   frameCount = 0,
   frameStart = performance.now(),
@@ -676,46 +819,19 @@ function frame(ms: number) {
   if (!viewer?.isOpen) scene?.update(time, cinema);
   viewer?.update(time);
   if (scene && mode === "detail") {
+    documentDecryption.update(time, scene.decryptionFrame, prefs.reduced);
     $("#detail-content").style.opacity = String(scene.detailVisibility);
     $("#detail-content").style.transform =
       `translateY(${(1 - scene.detailVisibility) * 18}px)`;
     $("#detail-content").inert = scene.detailVisibility < 0.1;
+    if (pendingDetailFocus && scene.detailVisibility >= 0.1 && !modal && !viewer?.isOpen) {
+      $("#detail-content").focus({ preventScroll: true });
+      pendingDetailFocus = false;
+    }
   }
-  const inspectTime = cinema?.time ?? -1;
-  const inspectOpacity =
-    ease((inspectTime - 29.15) / 0.35) * (1 - ease((inspectTime - 31.4) / 0.5));
-  $("#inspection-marks").style.opacity = String(inspectOpacity);
-  $("#inspection-text").style.opacity = String(inspectOpacity);
-  $("#inspection-text strong").style.opacity = String(
-    ease((inspectTime - 30.25) / 0.5),
-  );
-  if (scene && inspectOpacity > 0) {
-    const corners = [
-      [-2.05, 3.04],
-      [2.05, 3.04],
-      [-2.05, 0.35],
-      [2.05, 0.35],
-    ].map(([x, y]) => scene!.projectCard(x, y));
-    $("#inspection-corners").innerHTML = corners
-      .map(([x, y]) => `<rect x="${x - 4}" y="${y - 4}" width="8" height="8"/>`)
-      .join("");
-    const a = scene.projectCard(-1.88, 0.5),
-      b = scene.projectCard(-0.36, 1.7);
-    const c = scene.projectCard(0.36, 2.04),
-      d = scene.projectCard(1.9, 2.9);
-    $("#inspection-lines").setAttribute("d", `M${a}L${b}M${c}L${d}`);
-  }
-  if (scene && inspectTime > 32.5) {
-    const [x, y] = scene.projectCard(0.15, 1.9);
-    $("#inspection-marks").style.opacity = String(
-      ease((inspectTime - 32.5) / 0.5),
-    );
-    $("#inspection-corners").innerHTML = "";
-    $("#inspection-lines").setAttribute(
-      "d",
-      `M${x - 2},${y}h4M${x},${y - 2}v4`,
-    );
-  }
+  $("#stage").style.setProperty("--detail-shade", String(mode === "boot" ? 0 : scene?.detailVisibility ?? 0));
+  if (scene) inspectionOverlay.render(scene.decryptionFrame,
+    (x, y) => scene.projectCard(x, y), Boolean(cinema));
   if (Math.floor(time) !== lastTime) {
     lastTime = Math.floor(time);
     $("#clock").textContent = new Date().toLocaleTimeString("en-GB");
@@ -747,14 +863,20 @@ async function start() {
       const label = $("#hover-label");
       if (i === null) {
         label.hidden = true;
+        hoverCode.finish();
+        hoverTitle.finish();
         return;
       }
+      const animated = !prefs.reduced && mode === "archive";
       hoverCode.update({
         value: Number(records[i].id.slice(2)),
-        animated: !label.hidden && !prefs.reduced && mode === "archive",
+        animated: !label.hidden && animated,
       });
-      $("#hover-title").textContent = " / " + records[i].title;
+      hoverTitle.update({ text: records[i].title, animated: !label.hidden && animated });
       label.hidden = false;
+      // Prepare the first visible value so the next hover can animate immediately.
+      hoverCode.update({ animated });
+      hoverTitle.update({ animated });
     };
     savePrefs();
     ready = true;
@@ -782,6 +904,22 @@ void start();
 // Deterministic review controls: the running application, never a video surrogate.
 Object.assign(window, {
   rhine: {
+    // The review button supplies a real user activation. Preferences stay local to this preview.
+    playBootPreview: async (music = false) => {
+      if (!ready || !navigator.userActivation.isActive) return false;
+      const request = ++audioPreviewRequest;
+      audioPreview = true;
+      audio.configure({ ...prefs, sound: true, music });
+      const unlocked = await audio.unlock();
+      if (request !== audioPreviewRequest) return false;
+      if (!unlocked) {
+        audioPreview = false;
+        audio.configure(prefs);
+        return false;
+      }
+      replayBoot(true);
+      return true;
+    },
     seek: (t: number) => {
       setMode("boot");
       bootStart = performance.now() / 1000 - t;
@@ -794,8 +932,12 @@ Object.assign(window, {
       ...scene?.getStats(),
       fps: Math.round(fps),
       mode,
+      ready,
+      bootTime: mode === "boot" ? (frozenTime ?? performance.now() / 1000 - bootStart) + 5 : null,
       selected: records[selected].id,
       saved: [...saved],
+      audio: audio.stats(),
     }),
   },
 });
+if (import.meta.hot) import.meta.hot.dispose(() => audio.dispose());

@@ -2,6 +2,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createArchiveLighting } from "./archive-lighting";
 import { damp } from "./motion";
+import { ViewerCameraMotion } from "./viewer-camera";
+import { normalizeQuality, type RenderQuality } from "./render-quality";
+import {
+  applyTextureQuality,
+  createViewerPipeline,
+  resizeQuality,
+} from "./quality-renderer";
 
 const PARTS = [
   { id: "fasteners", label: "紧固件", en: "FASTENERS", depth: 2.75 },
@@ -17,18 +24,25 @@ const PARTS = [
   { id: "carrier", label: "背板与框架", en: "CARRIER", depth: -2.05 },
 ] as const;
 
-type ModelSource = { model: THREE.Group; dispose: () => void };
+type ModelSource = { model: THREE.Group; dispose: () => void; setClarity?: (value: number) => void };
 export class ModelViewer {
   readonly root: HTMLElement;
   private canvasHost: HTMLElement;
   private renderer: THREE.WebGLRenderer;
+  private pipeline: ReturnType<typeof createViewerPipeline>;
+  private quality = normalizeQuality(undefined);
+  private appliedQuality = "";
   private scene = new THREE.Scene();
   private camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.3, 120);
+  private controlCamera = this.camera.clone();
+  private cameraMotion = new ViewerCameraMotion(this.camera);
   private controls: OrbitControls;
   private source?: ModelSource;
   private groups = new Map<string, THREE.Group>();
   private spread = { value: 0, velocity: 0 };
   private targetSpread = 0;
+  private clarity = { value: 1, velocity: 0 };
+  private targetClarity = 1;
   private lastTime = 0;
   private request = 0;
   private reduced = false;
@@ -44,7 +58,13 @@ export class ModelViewer {
   private provider?: () => Promise<ModelSource>;
   isOpen = false;
 
-  constructor(parent: HTMLElement, onClose: () => void) {
+  constructor(
+    parent: HTMLElement,
+    onClose: () => void,
+    private onSound: (
+      sound: "explode" | "assemble" | "tick",
+    ) => void = () => {},
+  ) {
     this.onClose = onClose;
     this.root = document.createElement("section");
     this.root.className = "model-viewer";
@@ -60,6 +80,7 @@ export class ModelViewer {
         <div class="viewer-heading"><span>RHINE LAB / OBJECT STUDY</span><h2 id="viewer-title">档案模型</h2><p id="viewer-file"></p></div>
         <span class="viewer-index">360<span>°</span></span>
       </header>
+      <div class="viewer-surface" role="group" aria-label="玻璃模式"><button data-viewer="clear" aria-pressed="true">清晰</button><button data-viewer="frosted" aria-pressed="false">磨砂</button></div>
       <aside class="viewer-parts" aria-label="模型装配结构"><div>ASSEMBLY / 装配结构</div>${PARTS.map((p, i) => `<p><span>${String(i + 1).padStart(2, "0")}</span><strong>${p.label}</strong><small>${p.en}</small></p>`).join("")}</aside>
       <div class="viewer-loading" role="status"><span>正在载入模型…</span><button data-viewer="retry" hidden>重新载入 ↗</button></div>
       <footer class="viewer-footer">
@@ -88,9 +109,18 @@ export class ModelViewer {
     // scene's light room here so this renderer receives its actual illumination.
     createArchiveLighting(this.renderer, this.scene);
     this.camera.position.copy(this.initialCamera);
-    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.085;
+    this.controlCamera.copy(this.camera);
+    this.controls = new OrbitControls(
+      this.controlCamera,
+      this.renderer.domElement,
+    );
+    this.controls.enableDamping = false;
+    this.pipeline = createViewerPipeline(
+      this.renderer,
+      this.scene,
+      this.camera,
+    );
+    this.pipeline.smaa.enabled = false;
     this.controls.rotateSpeed = 0.65;
     this.controls.zoomSpeed = 0.7;
     this.controls.panSpeed = 0.7;
@@ -100,6 +130,8 @@ export class ModelViewer {
     this.controls.screenSpacePanning = true;
     this.controls.enabled = false;
     this.controls.update();
+    this.cameraMotion.snap(this.controlCamera, this.controls.target);
+    this.controls.addEventListener("start", () => this.interruptReset());
     this.root.addEventListener("click", (event) => {
       if (this.closing) return;
       const action = (event.target as HTMLElement).closest<HTMLElement>(
@@ -108,9 +140,22 @@ export class ModelViewer {
       if (action === "close") this.close();
       if (action === "retry") void this.load();
       if (this.loading || !this.source) return;
-      if (action === "explode") this.setExploded(true);
-      if (action === "assemble") this.setExploded(false);
-      if (action === "reset") this.resetView();
+      if (action === "clear" || action === "frosted") {
+        this.setSurface(action === "clear");
+        this.onSound("tick");
+      }
+      if (action === "explode" && this.targetSpread !== 1) {
+        this.setExploded(true);
+        this.onSound("explode");
+      }
+      if (action === "assemble" && this.targetSpread !== 0) {
+        this.setExploded(false);
+        this.onSound("assemble");
+      }
+      if (action === "reset") {
+        this.resetView();
+        this.onSound("tick");
+      }
     });
     this.root.addEventListener("keydown", (event) => this.keydown(event));
   }
@@ -141,9 +186,11 @@ export class ModelViewer {
       "FILE " + id + " / INTERNAL DATABASE";
     this.spread = { value: 0, velocity: 0 };
     this.targetSpread = 0;
+    this.clarity = { value: 1, velocity: 0 };
+    this.setSurface(true);
     this.lastTime = 0;
     this.root.dataset.exploded = "false";
-    this.resetView();
+    this.resetView(false);
     this.resize();
     this.renderer.domElement.focus({ preventScroll: true });
     this.enter();
@@ -179,6 +226,7 @@ export class ModelViewer {
       for (const group of this.groups.values()) source.model.add(group);
       source.model.position.set(0, -1.85, 0);
       this.scene.add(source.model);
+      applyTextureQuality(source.model, this.renderer, this.quality);
       this.loading = false;
       loading.hidden = true;
       this.controls.enabled = true;
@@ -313,11 +361,18 @@ export class ModelViewer {
   }
 
   private setButtonsDisabled(disabled: boolean) {
-    for (const action of ["explode", "assemble", "reset"]) {
+    for (const action of ["explode", "assemble", "reset", "clear", "frosted"]) {
       this.root.querySelector<HTMLButtonElement>(
         `[data-viewer="${action}"]`,
       )!.disabled = disabled;
     }
+  }
+  private setSurface(clear: boolean) {
+    this.targetClarity = clear ? 1 : 0;
+    this.root.dataset.surface = clear ? "clear" : "frosted";
+    this.root.querySelector('[data-viewer="clear"]')!.setAttribute("aria-pressed", String(clear));
+    this.root.querySelector('[data-viewer="frosted"]')!.setAttribute("aria-pressed", String(!clear));
+    if (this.reduced) this.clarity = { value: this.targetClarity, velocity: 0 };
   }
   private setExploded(value: boolean) {
     this.targetSpread = value ? 1 : 0;
@@ -339,17 +394,23 @@ export class ModelViewer {
       this.root.querySelector(".viewer-state")!.textContent = value;
     }
   }
-  private resetView() {
+  private resetView(animated = true) {
     this.controls.enabled = false;
     this.controls.enableDamping = false;
     this.controls.update();
     this.controls.target.set(0, 0, 0);
-    this.camera.position.copy(this.initialCamera);
+    this.controlCamera.position.copy(this.initialCamera);
     this.controls.enableDamping = false;
     this.controls.update();
-    this.controls.enableDamping = !this.reduced;
+    if (animated && !this.reduced) this.cameraMotion.reset();
+    else this.cameraMotion.snap(this.controlCamera, this.controls.target);
     this.controls.enabled =
       this.isOpen && !this.loading && Boolean(this.source);
+  }
+  private interruptReset() {
+    if (!this.cameraMotion.resetting) return;
+    this.cameraMotion.interruptReset(this.controlCamera, this.controls.target);
+    this.controls.update();
   }
   private keydown(event: KeyboardEvent) {
     event.stopPropagation();
@@ -384,17 +445,21 @@ export class ModelViewer {
     if (event.key === "Home") {
       event.preventDefault();
       this.resetView();
+      this.onSound("tick");
       return;
     }
     if (["+", "=", "-"].includes(event.key)) {
       event.preventDefault();
-      const distance = this.camera.position.distanceTo(this.controls.target);
+      this.interruptReset();
+      const distance = this.controlCamera.position.distanceTo(
+        this.controls.target,
+      );
       const next = THREE.MathUtils.clamp(
         distance * (event.key === "-" ? 1.12 : 1 / 1.12),
         5,
         28,
       );
-      this.camera.position
+      this.controlCamera.position
         .sub(this.controls.target)
         .multiplyScalar(next / distance)
         .add(this.controls.target);
@@ -405,6 +470,7 @@ export class ModelViewer {
       ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
     ) {
       event.preventDefault();
+      this.interruptReset();
       const right = new THREE.Vector3().setFromMatrixColumn(
         this.camera.matrix,
         0,
@@ -412,28 +478,47 @@ export class ModelViewer {
       const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
       const delta = new THREE.Vector3();
       const step =
-        this.camera.position.distanceTo(this.controls.target) * 0.025;
+        this.controlCamera.position.distanceTo(this.controls.target) * 0.025;
       if (event.key === "ArrowLeft") delta.addScaledVector(right, -step);
       if (event.key === "ArrowRight") delta.addScaledVector(right, step);
       if (event.key === "ArrowUp") delta.addScaledVector(up, step);
       if (event.key === "ArrowDown") delta.addScaledVector(up, -step);
-      this.camera.position.add(delta);
+      // Clamp the requested focus before moving the camera by the same amount.
+      // This preserves orbit radius at the panning limit.
+      const previous = this.controls.target.clone();
       this.controls.target.add(delta);
+      this.controls.target.clampLength(0, this.controls.maxTargetRadius);
+      this.controlCamera.position.add(
+        this.controls.target.clone().sub(previous),
+      );
       this.controls.update();
     }
+  }
+
+  setQuality(quality: RenderQuality) {
+    const key = JSON.stringify(quality);
+    if (this.appliedQuality === key) return;
+    this.appliedQuality = key;
+    this.quality = normalizeQuality(quality);
+    this.pipeline.smaa.enabled = this.quality.antialias === "smaa";
+    applyTextureQuality(this.scene, this.renderer, this.quality);
+    this.resize();
   }
 
   resize() {
     if (!this.isOpen) return;
     const width = this.canvasHost.clientWidth,
       height = this.canvasHost.clientHeight;
-    this.renderer.setPixelRatio(
-      Math.min(devicePixelRatio, 1.5) *
-        Math.min(innerWidth / 1920, innerHeight / 1080),
+    resizeQuality(
+      this.renderer,
+      this.pipeline.composer,
+      this.canvasHost,
+      this.quality,
     );
-    this.renderer.setSize(width, height);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+    this.controlCamera.aspect = this.camera.aspect;
+    this.controlCamera.updateProjectionMatrix();
   }
 
   update(time: number) {
@@ -441,6 +526,10 @@ export class ModelViewer {
     const dt = Math.min(this.lastTime ? time - this.lastTime : 1 / 60, 0.05);
     this.lastTime = time;
     if (this.source) {
+      damp(this.clarity, this.targetClarity, 8, dt);
+      if (Math.abs(this.clarity.value - this.targetClarity) < .0001 && Math.abs(this.clarity.velocity) < .001)
+        this.clarity = { value: this.targetClarity, velocity: 0 };
+      this.source.setClarity?.(this.clarity.value);
       damp(this.spread, this.targetSpread, this.reduced ? 45 : 5.5, dt);
       if (
         Math.abs(this.spread.value - this.targetSpread) < 0.0001 &&
@@ -454,19 +543,34 @@ export class ModelViewer {
       }
     }
     this.controls.update();
+    this.cameraMotion.update(
+      this.controlCamera,
+      this.controls.target,
+      dt,
+      this.reduced,
+    );
     // Match the detail scene's gentle haze without washing out the object as
     // the user zooms. The assembled model is centered on the world origin.
     const fog = this.scene.fog as THREE.Fog;
     const objectDistance = this.camera.position.length();
     fog.near = Math.max(0, objectDistance - 1);
     fog.far = objectDistance + 12;
-    this.renderer.render(this.scene, this.camera);
+    if (this.quality.antialias === "smaa") this.pipeline.composer.render();
+    else this.renderer.render(this.scene, this.camera);
     this.root.dataset.stats = JSON.stringify({
       ready: Boolean(this.source),
+      clarity: this.clarity.value,
+      targetClarity: this.targetClarity,
       spread: this.spread.value,
       target: this.targetSpread,
-      distance: this.camera.position.distanceTo(this.controls.target),
-      targetPosition: this.controls.target.toArray(),
+      distance: this.camera.position.distanceTo(this.cameraMotion.focus),
+      targetPosition: this.cameraMotion.focus.toArray(),
+      requestedTarget: this.controls.target.toArray(),
+      requestedDistance: this.controlCamera.position.distanceTo(
+        this.controls.target,
+      ),
+      cameraPosition: this.camera.position.toArray(),
+      resetting: this.cameraMotion.resetting,
       azimuth: this.controls.getAzimuthalAngle(),
       polar: this.controls.getPolarAngle(),
       parts: [...this.groups].map(([id, group]) => ({

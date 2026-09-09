@@ -122,31 +122,50 @@ button {
 .brand {
   position: absolute;
   left: 59px;
-  top: 112px;
+  top: 114px;
   z-index: 5;
   line-height: 1;
   user-select: none;
+  width: 270px;
+  white-space: nowrap;
 }
 .brand h1 {
-  font-size: 48px;
-  letter-spacing: 0.1px;
-  line-height: 51px;
+  font-size: 44px;
+  letter-spacing: 2.5px;
+  line-height: 48px;
   margin: 0;
   font-weight: 750;
 }
 .brand > div {
-  font-size: 20px;
+  font-size: 19px;
   line-height: 23px;
-  letter-spacing: -0.05px;
+  letter-spacing: 0.65px;
+  font-weight: 600;
 }
 .brand p {
   margin: 0;
-  font-size: 38px;
+  font-size: 35px;
   line-height: 40px;
-  word-spacing: 10px;
+  letter-spacing: 0;
+  word-spacing: 0;
+  display: flex;
+  justify-content: space-between;
 }
 .brand p b {
   font-weight: 750;
+  letter-spacing: 3px;
+}
+.brand-analysis {
+  position: relative;
+  display: block;
+  width: 189px;
+  height: 40px;
+}
+.brand-analysis > span {
+  position: absolute;
+  top: 0;
+  letter-spacing: 0;
+  font-kerning: none;
 }
 .powered {
   position: absolute;
@@ -367,6 +386,8 @@ button {
 }
 .system-nav button {
   font-size: 14px;
+  line-height: 1;
+  min-height: 28px;
   letter-spacing: 0.7px;
   display: flex;
   align-items: center;
@@ -376,8 +397,8 @@ button {
   color: #9b7247;
 }
 .nav-glyph {
-  font-size: 31px;
-  line-height: 19px;
+  width: 23px;
+  height: 23px;
 }
 .key {
   font-size: 11px;
@@ -387,6 +408,8 @@ button {
   align-items: center;
   min-width: 19px;
   height: 21px;
+  flex-shrink: 0;
+  line-height: 1;
   opacity: 0.6;
   margin-left: 6px;
 }
@@ -414,7 +437,7 @@ button {
   opacity: 0;
   transition: opacity 0.7s;
 }
-.eyebrow span {
+.eyebrow > span {
   margin-left: 16px;
 }
 .file-title {
@@ -566,7 +589,7 @@ button {
   gap: 7px;
   min-width: 140px;
 }
-.column-navigation span {
+.column-navigation > div > span {
   font-size: 10px;
   letter-spacing: 1.2px;
   color: #726f67;
@@ -581,9 +604,6 @@ button {
   font-variant-numeric: tabular-nums;
   --rn-blur: 0.35;
   --rn-edge-fade: 0.08em;
-}
-.file-ticks button[hidden] {
-  display: none;
 }
 .file-ticks {
   display: flex;
@@ -717,7 +737,6 @@ button {
   position: absolute;
   left: 60px;
   bottom: 235px;
-  animation: fadeIn 1.4s 0.4s both;
 }
 .object-caption > span {
   font-size: 37px;
@@ -807,6 +826,7 @@ button {
   vertical-align: middle;
 }
 .detail-tabs {
+  position: relative;
   display: flex;
   gap: 34px;
   border-bottom: 1px solid #bdb8ad;
@@ -824,19 +844,22 @@ button {
 .detail-tabs button.active {
   color: #191c16;
 }
-.detail-tabs button.active:after {
-  content: "";
+.tab-indicator {
   position: absolute;
   bottom: -1px;
   left: 0;
-  right: 0;
+  width: 1px;
   height: 2px;
   background: #25281e;
+  transform-origin: left center;
+  pointer-events: none;
+  transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .tab-panel {
   height: 189px;
   padding-top: 22px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: #bbb4a6 transparent;
 }
@@ -919,10 +942,14 @@ button {
   letter-spacing: 1px;
   width: 105px;
   text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
 }
 .export-button span {
   font-size: 23px;
-  float: right;
+  line-height: 1;
 }
 .detail-footnote {
   display: flex;
@@ -948,7 +975,12 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: fadeIn 0.3s both;
+}
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal-backdrop[data-transition="closing"] .terminal-modal {
+  pointer-events: none;
 }
 .terminal-modal {
   width: 1260px;
@@ -958,7 +990,6 @@ button {
   border: 1px solid #f7f5ee;
   position: relative;
   padding: 35px 53px;
-  animation: modalEnter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .modal-top {
   display: flex;
@@ -974,9 +1005,27 @@ button {
   display: flex;
   gap: 24px;
   align-items: center;
+  line-height: 1;
 }
 .modal-top button > span {
-  font-size: 26px;
+  position: relative;
+  flex: 0 0 16px;
+  height: 34px;
+  font-size: 0;
+}
+.modal-top button > span::before,
+.modal-top button > span::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.modal-top button > span::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 .terminal-modal h2 {
   font-size: 38px;
@@ -1000,13 +1049,47 @@ button {
   gap: 22px;
 }
 .search-field > span:first-child {
-  font-size: 36px;
-  line-height: 1;
+  width: 26px;
+  height: 26px;
+}
+/* Fixed geometry keeps the search symbol independent of font fallback metrics. */
+.nav-glyph,
+.search-field > span:first-child {
+  position: relative;
+  flex-shrink: 0;
+  display: block;
+  font-size: 0;
+}
+.nav-glyph::before,
+.search-field > span:first-child::before {
+  content: "";
+  position: absolute;
+  width: 60%;
+  height: 60%;
+  left: 30%;
+  top: 8%;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.nav-glyph::after,
+.search-field > span:first-child::after {
+  content: "";
+  position: absolute;
+  width: 42%;
+  height: 2px;
+  left: 9%;
+  top: 82%;
+  background: currentColor;
+  transform: rotate(-45deg);
+  transform-origin: left center;
 }
 .search-field input {
   border: 0;
   background: none;
   width: 100%;
+  min-width: 0;
+  padding: 0;
   height: 100%;
   outline: none;
   font-size: 19px;
@@ -1031,18 +1114,35 @@ button {
   font-size: 12px;
   color: #8c8373;
   transition: color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
 }
 .category-filters button.active {
   color: #1e2418;
 }
+.category-filters button:before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  visibility: hidden;
+}
 .category-filters button.active:before {
-  content: "▪";
-  margin-right: 7px;
+  visibility: visible;
+}
+.result-header,
+.result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 230px 175px;
+  padding-right: 7px;
 }
 .result-header {
-  display: grid;
-  grid-template-columns: 1fr 230px 175px;
-  padding: 14px 0;
+  padding-block: 14px;
+  /* Match the list's classic scrollbar gutter, including after filtering. */
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
   border-top: 1px solid #bfb7a7;
   border-bottom: 1px solid #bfb7a7;
   font-size: 9px;
@@ -1051,20 +1151,19 @@ button {
 }
 .search-results {
   height: 387px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #bbb4a6 transparent;
 }
 .result-row {
   width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 230px 175px;
   align-items: center;
   min-height: 76px;
   text-align: left;
   border-bottom: 1px solid #d6d0c4;
   transition: background 0.25s;
-  padding-right: 7px;
 }
 .result-row:hover,
 .result-row:focus-visible {
@@ -1075,14 +1174,18 @@ button {
   align-items: center;
   gap: 25px;
   font-size: 16px;
+  min-width: 0;
+  padding-right: 24px;
 }
 .result-name > b {
   font-size: 14px;
-  width: 58px;
+  flex: 0 0 58px;
   font-weight: 400;
 }
 .result-name > span {
   display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .result-name small {
   display: block;
@@ -1104,10 +1207,17 @@ button {
   font-size: 9px;
   letter-spacing: 0.5px;
   color: #6b6d54;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 30px;
+  line-height: 1;
 }
 .result-row > span:last-child > i {
   font-size: 24px;
-  margin-left: 30px;
+  flex: 0 0 24px;
+  line-height: 1;
   font-style: normal;
   color: #343a29;
 }
@@ -1157,7 +1267,7 @@ button {
 }
 .settings-modal {
   width: 930px;
-  height: 850px;
+  height: 786px;
 }
 .settings-modal h2 {
   font-size: 33px;
@@ -1174,8 +1284,15 @@ button {
 .settings-list {
   border-top: 1px solid #c1b8a7;
 }
-.settings-list > label,
-.settings-list > .settings-row {
+.audio-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.settings-list .audio-toggle { padding: 20px 0 12px; border-bottom: 0; }
+.settings-list .audio-toggle span { margin-top: 7px; }
+.settings-list .audio-volume { justify-content: flex-start; gap: 12px; padding: 8px 0 18px; }
+.settings-list .audio-volume span { margin: 0; font-size: 10px; white-space: nowrap; }
+.settings-list .audio-volume input { position: static; width: 100%; min-width: 60px; height: 22px; opacity: 1; accent-color: #565c46; }
+.audio-volume output { min-width: 36px; text-align: right; font-size: 10px; font-variant-numeric: tabular-nums; }
+.audio-volume input:focus-visible { outline: 2px solid #a67d48; outline-offset: 4px; }
+.settings-list label {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1184,39 +1301,19 @@ button {
   cursor: pointer;
   position: relative;
 }
-.settings-audio {
-  cursor: default;
-  gap: 24px;
-}
-.settings-audio-controls {
-  display: flex;
-  align-items: center;
-  gap: 22px;
-  flex: none;
-}
-.settings-toggle-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  width: 50px;
-  height: 24px;
-  flex: none;
-  cursor: pointer;
-}
 .settings-list strong {
   font-size: 12px;
   letter-spacing: 0.8px;
   font-weight: 400;
   display: block;
 }
-.settings-list label span,
-.settings-list .settings-row span {
+.settings-list label span {
   display: block;
   font-size: 12px;
   color: #938977;
   margin-top: 9px;
 }
-.settings-list input[type="checkbox"] {
+.settings-list input {
   position: absolute;
   right: 0;
   opacity: 0;
@@ -1224,54 +1321,7 @@ button {
   height: 40px;
   cursor: pointer;
 }
-.settings-toggle-wrap input[type="checkbox"] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-.settings-list input[type="range"] {
-  position: static;
-  opacity: 1;
-  width: 148px;
-  height: 16px;
-  margin: 0;
-  padding: 0;
-  cursor: pointer;
-  appearance: none;
-  background: transparent;
-  accent-color: #565c46;
-}
-.settings-list input[type="range"]::-webkit-slider-runnable-track {
-  height: 4px;
-  background: #d3ccbf;
-}
-.settings-list input[type="range"]::-webkit-slider-thumb {
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  margin-top: -5px;
-  background: #f5f2e9;
-  border: 1px solid #565c46;
-  cursor: pointer;
-}
-.settings-list input[type="range"]::-moz-range-track {
-  height: 4px;
-  background: #d3ccbf;
-  border: none;
-}
-.settings-list input[type="range"]::-moz-range-thumb {
-  width: 14px;
-  height: 14px;
-  background: #f5f2e9;
-  border: 1px solid #565c46;
-  cursor: pointer;
-}
-.settings-audio:has(input[type="checkbox"]:not(:checked)) input[type="range"] {
-  opacity: 0.35;
-}
 .toggle {
-  display: block;
   width: 50px;
   height: 24px;
   background: #d3ccbf;
@@ -1330,10 +1380,13 @@ button {
 .settings-bottom button {
   font-size: 11px;
   letter-spacing: 0.8px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 .settings-bottom button span {
   font-size: 20px;
-  margin-left: 20px;
+  line-height: 1;
 }
 .toast {
   position: absolute;
@@ -1541,7 +1594,23 @@ button {
   opacity: 0;
   pointer-events: none;
 }
-[data-mode="detail"] .scene-atmosphere {
+.archive-atmosphere {
+  background: none;
+}
+.archive-atmosphere::before,
+.archive-atmosphere::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.archive-atmosphere::before {
+  opacity: calc(1 - var(--detail-shade, 0));
+  background:
+    linear-gradient(180deg, rgba(234, 231, 226, 0.35), transparent 38%),
+    radial-gradient(ellipse at 42% 47%, transparent 32%, rgba(232, 229, 225, 0.19) 85%);
+}
+.archive-atmosphere::after {
+  opacity: var(--detail-shade, 0);
   background: linear-gradient(
     90deg,
     transparent 40%,
@@ -1637,13 +1706,6 @@ button {
   opacity: 0.88;
   text-shadow: 0 1px 5px #4a4740;
 }
-.brand h1 {
-  font-size: 50px;
-}
-.brand p {
-  font-size: 40px;
-  word-spacing: 8px;
-}
 .powered {
   font-size: 19px;
 }
@@ -1653,9 +1715,6 @@ button {
 }
 .archive-callout {
   top: 471px;
-}
-.brand h1 {
-  transform: translateY(2px);
 }
 .export-button {
   color: inherit;
@@ -1963,37 +2022,15 @@ button {
   transition: none;
 }
 
-/* A stable strip replaces unreadable titles during rapid archive navigation. */
-.scrub-title {
-  display: inline-block;
-  position: relative;
-  white-space: nowrap;
+/* Use the same rolling engine as archive numbers, with quieter text blur. */
+#selected-title,
+#column-name,
+#hover-title,
+#archive-category,
+#selected-clearance {
   flex: none;
-}
-.scrub-title::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  height: 0.78em;
-  transform: translateY(-50%);
-  background: #191b16;
-  opacity: 0;
-  pointer-events: none;
-}
-.scrub-title[data-scrubbing="true"]::after {
-  opacity: 1;
-  animation: title-strip-appear 140ms steps(1, end);
-}
-@keyframes title-strip-appear {
-  0%,
-  70% {
-    opacity: 0;
-  }
-  100% {
-    opacity: 1;
-  }
+  --rn-blur: 0.2;
+  --rn-edge-fade: 0.08em;
 }
 /* Frame-driven opening: no elapsed CSS animation state when seeking/replaying. */
 [data-mode="boot"] .brand,

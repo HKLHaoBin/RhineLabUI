@@ -6,7 +6,12 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { normalizeQuality, type RenderQuality } from "./render-quality";
+import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
+import { configureInternalOptics } from "./internal-optics";
+import { DecryptionController } from "./decryption";
 import { fileAtSlot, fileLocation } from "./data";
 import {
   cellKey,
@@ -45,13 +50,17 @@ const ease = (t: number) => {
 export class ArchiveScene {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 0.1, 300);
+  // The reference uses a long lens 72–140 units from the cassette. A 0.1 near
+  // plane quantizes adjacent optical layers to the same depth (visible shimmer).
+  // All visible foreground geometry is beyond 5; retain the framing and lens.
+  readonly camera = new THREE.PerspectiveCamera(34, 16 / 9, 5, 300);
   private composer: EffectComposer;
   private ao: SSAOPass;
   private bokeh: BokehPass;
   private instances: THREE.InstancedMesh[] = [];
   private model = new THREE.Group();
   private appearance = new CardAppearance();
+  private decryption = new DecryptionController();
   private cursor = new THREE.Vector2();
   private raycaster = new THREE.Raycaster();
   private dummy = new THREE.Object3D();
@@ -80,6 +89,7 @@ export class ArchiveScene {
     cell: ArchiveCell;
     lift: { value: number; velocity: number };
     returnY: number | null;
+    clarity: number;
   }[] = [];
   private pulses: { row: number; lane: number; time: number }[] = [];
   private pendingPulse: ArchiveCell | null = null;
@@ -100,7 +110,10 @@ export class ArchiveScene {
   private labelTexture?: THREE.CanvasTexture;
   private labelMark = new Image();
   private reduced = false;
-  private highQuality = true;
+  private quality = normalizeQuality(undefined);
+  private appliedQuality = "";
+  private smaa = new SMAAPass();
+  private aoKernelSize = 32;
   onSelect?: (index: number, cell?: ArchiveCell) => void;
   onHover?: (index: number | null) => void;
   constructor(
@@ -175,15 +188,15 @@ export class ArchiveScene {
       maxblur: 0.011,
     });
     this.composer.addPass(this.bokeh);
+    this.smaa.enabled = false;
+    this.composer.addPass(this.smaa);
     this.composer.addPass(new OutputPass());
     this.bindPointer();
   }
-  async load() {
+  async load(assetUrl = publicUrl("assets/archive-cassette.glb")) {
     this.labelMark.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(labelMarkSvg)}`;
     await this.labelMark.decode();
-    const gltf = await new GLTFLoader().loadAsync(
-      publicUrl("assets/archive-cassette.glb"),
-    );
+    const gltf = await new GLTFLoader().loadAsync(assetUrl);
     gltf.scene.updateMatrixWorld(true);
     const meshes: THREE.Mesh[] = [];
     gltf.scene.traverse((o) => {
@@ -212,20 +225,6 @@ export class ArchiveScene {
         mat.ior = 1.46;
         mat.attenuationColor = new THREE.Color("#eee6df");
         mat.attenuationDistance = 2;
-        mat.onBeforeCompile = (shader) => {
-          shader.vertexShader =
-            "varying float vArchiveHeight;\n" + shader.vertexShader;
-          shader.vertexShader = shader.vertexShader.replace(
-            "#include <begin_vertex>",
-            "#include <begin_vertex>\nvArchiveHeight = position.y / 3.7;",
-          );
-          shader.fragmentShader =
-            "varying float vArchiveHeight;\n" + shader.fragmentShader;
-          shader.fragmentShader = shader.fragmentShader.replace(
-            "#include <roughnessmap_fragment>",
-            "#include <roughnessmap_fragment>\nroughnessFactor = mix(0.48, 0.035, smoothstep(0.36, 0.68, vArchiveHeight));",
-          );
-        };
       }
       if (name === "Internal_Ceramic") {
         mat.color.set(this.lightingLook === "refined" ? "#c4baae" : "#c7beb6");
@@ -256,14 +255,7 @@ export class ArchiveScene {
         mat.roughness = 0.26;
         mat.metalness = 0.08;
       }
-      if (name === "Amber_Lightguide") {
-        // The guide sits only 0.002 ahead of the cover. At the long camera
-        // distance that gap can quantize to one depth value at oblique angles.
-        // Bias this narrow overlay only; retain the camera and global AO depth.
-        mat.polygonOffset = true;
-        mat.polygonOffsetFactor = -1;
-        mat.polygonOffsetUnits = -2;
-      }
+      configureInternalOptics(name, mat);
       if (name === "Carbon_Ink") continue;
       const selectedMesh = new THREE.Mesh(geom, mat);
       selectedMesh.userData.surface = name;
@@ -277,7 +269,7 @@ export class ArchiveScene {
           "Frosted_Polymer",
           "Ivory_Edges",
           "Titanium_Fasteners",
-          "Champagne_Index",
+          "Index_Inlay",
           "Optical_Diffuser",
         ].includes(name)
       ) {
@@ -322,7 +314,7 @@ export class ArchiveScene {
         );
         arrayMat.roughness = 0.38;
       }
-      if (name === "Champagne_Index") {
+      if (name === "Index_Inlay") {
         arrayMat.color.set("#e4d6c5");
         arrayMat.metalness = 0.05;
       }
@@ -392,6 +384,7 @@ export class ArchiveScene {
     });
     this.appearance.prepare(model);
     this.appearance.apply(model, 1);
+    this.appearance.setClarity(model, this.decryption.clarity);
     const canvas = document.createElement("canvas");
     canvas.width = this.labelCanvas.width;
     canvas.height = this.labelCanvas.height;
@@ -414,6 +407,7 @@ export class ArchiveScene {
     meshes.push(label);
     return {
       model,
+      setClarity: (value: number) => this.appearance.setClarity(model, value),
       dispose: () => {
         for (const mesh of meshes) {
           mesh.geometry.dispose();
@@ -424,6 +418,9 @@ export class ArchiveScene {
     };
   }
   setMode(mode: "hidden" | "archive" | "detail") {
+    if (mode === "detail") this.decryption.enter(this.scanBlend > .9 && this.decryption.clarity > .999);
+    else this.decryption.leave();
+    if (mode === "hidden") this.decryption.select();
     if (mode !== "archive") this.pendingPulse = null;
     this.looping = mode !== "hidden";
     if (!this.looping) {
@@ -448,10 +445,42 @@ export class ArchiveScene {
   setReduced(value: boolean) {
     this.reduced = value;
   }
-  setQuality(high: boolean) {
-    this.highQuality = high;
-    this.ao.enabled = high;
-    this.bokeh.enabled = high;
+  setQuality(value: RenderQuality | boolean) {
+    const quality =
+      typeof value === "boolean"
+        ? normalizeQuality(undefined, value)
+        : normalizeQuality(value);
+    const key = JSON.stringify(quality);
+    if (this.appliedQuality === key) return;
+    this.appliedQuality = key;
+    this.quality = quality;
+    if (quality.aoSamples && quality.aoSamples !== this.aoKernelSize) {
+      const old = this.ao;
+      this.ao = new SSAOPass(this.scene, this.camera, 1, 1, quality.aoSamples);
+      this.ao.kernelRadius = old.kernelRadius;
+      this.ao.minDistance = old.minDistance;
+      this.ao.maxDistance = old.maxDistance;
+      const index = this.composer.passes.indexOf(old);
+      this.composer.removePass(old);
+      this.composer.insertPass(this.ao, index);
+      old.dispose();
+      this.aoKernelSize = quality.aoSamples;
+    }
+    this.ao.enabled = quality.aoSamples > 0;
+    this.bokeh.enabled = quality.depthOfField > 0;
+    this.smaa.enabled = quality.antialias === "smaa";
+    this.renderer.shadowMap.enabled = quality.shadows > 0;
+    const size = Math.min(
+      quality.shadows || 1024,
+      this.renderer.capabilities.maxTextureSize,
+    );
+    if (this.light.shadow.mapSize.x !== size) {
+      this.light.shadow.map?.dispose();
+      this.light.shadow.map = null;
+      this.light.shadow.mapSize.set(size, size);
+    }
+    this.light.shadow.needsUpdate = true;
+    applyTextureQuality(this.scene, this.renderer, quality);
     this.resize();
   }
   private cellPosition(cell: ArchiveCell) {
@@ -521,6 +550,7 @@ export class ArchiveScene {
         depthWrite: false,
       });
       this.appearance.apply(group, ease(this.lift.value / 0.4));
+      this.appearance.setClarity(group, this.decryption.clarity);
       this.scene.add(group);
       this.outgoing.push({
         group,
@@ -528,6 +558,7 @@ export class ArchiveScene {
         cell: { ...this.selectedCell },
         lift: { ...this.lift },
         returnY: group.rotation.y !== 0 ? group.position.y : null,
+        clarity: this.decryption.clarity,
       });
       this.lift.value = 0;
       this.lift.velocity = 0;
@@ -535,6 +566,7 @@ export class ArchiveScene {
     this.selectedSlot = next;
     this.selectedCell = cell;
     if (changed) {
+      this.decryption.select();
       this.rotation = 0;
       this.returnY = null;
     }
@@ -544,6 +576,7 @@ export class ArchiveScene {
       this.lift = { ...o.lift };
       this.rotation = o.group.rotation.y;
       this.returnY = o.returnY;
+      this.decryption.select(o.clarity);
       this.scene.remove(o.group);
       this.appearance.dispose(o.group);
       this.outgoing.splice(returning, 1);
@@ -587,13 +620,26 @@ export class ArchiveScene {
   resize() {
     const w = this.container.clientWidth,
       h = this.container.clientHeight;
-    this.renderer.setPixelRatio(
-      Math.min(devicePixelRatio, this.highQuality ? 1.5 : 1) *
-        Math.min(innerWidth / 1920, innerHeight / 1080),
+    const dimensions = resizeQuality(
+      this.renderer,
+      this.composer,
+      this.container,
+      this.quality,
     );
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
-    this.renderer.setSize(w, h);
-    this.composer.setSize(w, h);
+    this.ao.setSize(
+      Math.max(1, Math.floor(dimensions.width * this.quality.aoResolution)),
+      Math.max(1, Math.floor(dimensions.height * this.quality.aoResolution)),
+    );
+    this.container.dataset.renderQuality = JSON.stringify({
+      ...JSON.parse(this.container.dataset.renderQuality!),
+      aoSamples: this.ao.enabled ? this.aoKernelSize : 0,
+      aoWidth: this.ao.width,
+      aoHeight: this.ao.height,
+      shadows: this.renderer.shadowMap.enabled
+        ? this.light.shadow.mapSize.x
+        : 0,
+      depthOfField: this.bokeh.enabled ? this.quality.depthOfField : 0,
+    });
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -846,7 +892,10 @@ export class ArchiveScene {
       ? cinematic.zoom
       : THREE.MathUtils.lerp(this.detail, cameraTarget, blend);
     const detail = this.detail;
+    this.decryption.update(dt, detail > .78 && this.lift.value > 3.3, this.reduced,
+      cinematic ? shot + 5 : undefined);
     this.appearance.apply(this.model, ease(this.lift.value / 0.4));
+    this.appearance.setClarity(this.model, this.decryption.clarity);
     // Reference 26.92–27.76: the array travels horizontally into a white field.
     const entry = cinematic ? ease((shot - 21.9) / 0.86) : this.reveal;
     const entranceTime = THREE.MathUtils.clamp((shot - 21.92) / 0.75, 0, 1);
@@ -870,6 +919,8 @@ export class ArchiveScene {
       );
       const quality = ease(o.lift.value / 0.4);
       this.appearance.apply(o.group, quality);
+      o.clarity = this.reduced ? 0 : o.clarity * Math.exp(-dt * 9);
+      this.appearance.setClarity(o.group, o.clarity);
       const { row, lane } = o.cell;
       o.group.rotation.x =
         (field(row + 0.5, lane) - field(row - 0.5, lane)) *
@@ -1128,7 +1179,10 @@ export class ArchiveScene {
       { value: number }
     >;
     bokehUniforms.focus.value = -focalPoint.z;
-    bokehUniforms.aperture.value = THREE.MathUtils.lerp(0.0003, 0.0008, detail);
+    bokehUniforms.aperture.value =
+      (THREE.MathUtils.lerp(0.0003, 0.0008, detail) *
+        this.quality.depthOfField) /
+      100;
     this.renderer.info.reset();
     this.composer.render();
   }
@@ -1139,6 +1193,8 @@ export class ArchiveScene {
       .project(this.camera);
     return [(p.x + 1) * 960, (1 - p.y) * 540];
   }
+  get decryptionFrame() { return this.decryption.frame; }
+  finishDecryption() { this.decryption.finish(); }
   get detailVisibility() {
     return ease((this.detail - 0.25) / 0.55);
   }
@@ -1151,6 +1207,7 @@ export class ArchiveScene {
       return [Math.round((p.x + 1) * 960), Math.round((1 - p.y) * 540)];
     };
     return {
+      decryption: { ...this.decryption.frame, clarity: this.decryption.clarity },
       topLeft: project(-2.5, 3.7, 0),
       topRight: project(2.5, 3.7, 0),
       labelTopLeft: project(-1.855, 3.27, 0.255),
@@ -1196,6 +1253,8 @@ export class ArchiveScene {
       cameraDetail: Math.round(this.detail * 1000) / 1000,
       idleGain: this.idleGain,
       cameraDistance: this.camera.position.distanceTo(this.cameraAim),
+      cameraNear: this.camera.near,
+      cameraFar: this.camera.far,
       fogNear: (this.scene.fog as THREE.Fog).near,
       fogFar: (this.scene.fog as THREE.Fog).far,
       returningAppearance: this.outgoing.map((o) => ({
