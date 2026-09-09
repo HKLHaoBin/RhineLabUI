@@ -10,6 +10,7 @@ import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { normalizeQuality, type RenderQuality } from "./render-quality";
 import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
+import { configureInternalOptics } from "./internal-optics";
 import { DecryptionController } from "./decryption";
 import { fileAtSlot, fileLocation } from "./data";
 import {
@@ -277,6 +278,7 @@ export class ArchiveScene {
         mat.polygonOffsetFactor = -1;
         mat.polygonOffsetUnits = -2;
       }
+      configureInternalOptics(name, mat);
       if (name === "Carbon_Ink") continue;
       const selectedMesh = new THREE.Mesh(geom, mat);
       selectedMesh.userData.surface = name;

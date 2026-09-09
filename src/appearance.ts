@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { internalOpticsFragment } from "./internal-optics.ts";
 
 type Surface = THREE.MeshPhysicalMaterial;
 type Palette = { high: Surface; low?: Surface };
@@ -22,9 +23,12 @@ export class CardAppearance {
       const amount = { value: 0 };
       const clarity = { value: 0 };
       mesh.material = mat;
+      if (mat.userData.opticalOrder) mesh.renderOrder = mat.userData.opticalOrder;
       mesh.userData.appearance = amount;
       mesh.userData.glassClarity = clarity;
       mat.onBeforeCompile = (shader) => {
+        if (mat.userData.opticalOrder)
+          shader.fragmentShader = internalOpticsFragment(shader.fragmentShader);
         shader.uniforms.archiveQuality = amount;
         shader.uniforms.archiveClarity = clarity;
         shader.fragmentShader =

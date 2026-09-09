@@ -58,7 +58,7 @@ def text(name, body,x,z,size,mat=ink):
     o.location=(x,-.123,z);o.rotation_euler=(math.pi/2,0,0);c.materials.append(mat)
     return o
 
-def annular_profile(name, x, z, profile, mat, segments=128, start=0, end=2*math.pi):
+def annular_profile(name, x, z, profile, mat, segments=128, start=0, end=2*math.pi, sharp=False):
     # Closed revolved cross-section: a shallow moulded lens, not a round tube.
     vertices=[]; faces=[]; n=len(profile)
     closed=abs(end-start-2*math.pi)<1e-6
@@ -76,6 +76,25 @@ def annular_profile(name, x, z, profile, mat, segments=128, start=0, end=2*math.
     obj=bpy.data.objects.new(name,mesh);scene.collection.objects.link(obj);mesh.materials.append(mat)
     # The clockwise section above yields outward normals, including the bore.
     for p in mesh.polygons:p.use_smooth=len(p.vertices)==4
+    if sharp:
+        # Keep each section edge hard, but interpolate around the circumference.
+        # Flat shading alone would facet the circle; all-smooth shading balloons
+        # the roof/wall junction into a rounded tube.
+        normals=[]
+        for face in mesh.polygons:
+            if face.index>=segments*n:
+                face.use_smooth=False
+                normals.extend([tuple(face.normal)]*len(face.loop_indices))
+                continue
+            j=face.index%n
+            dr=profile[(j+1)%n][0]-profile[j][0]
+            dy=profile[(j+1)%n][1]-profile[j][1]
+            for loop in face.loop_indices:
+                row=mesh.loops[loop].vertex_index//n
+                angle=start+(end-start)*row/segments
+                normal=Vector((-dy*math.cos(angle),dr,-dy*math.sin(angle))).normalized()
+                normals.append(tuple(normal))
+        mesh.normals_split_custom_set(normals)
     return obj
 
 def channel(name, points, depth, radius, mat):
@@ -196,9 +215,18 @@ for mat in list(dict.fromkeys(o.data.materials[0] for o in scene.objects if o.ty
 # Annotated reference: the visible end face occupies roughly half a row pitch.
 for obj in scene.objects:
     if obj.type=='MESH':
-        for vertex in obj.data.vertices:vertex.co.y *= 2.0
+        if obj.data.materials[0].name.startswith(('Optical_Glass_', 'Optical_Bridge_Glass', 'Amber_Optical_Inlay')):
+            bpy.context.view_layer.objects.active=obj
+            bpy.ops.object.select_all(action='DESELECT');obj.select_set(True)
+            obj.scale.y *= 2.0
+            bpy.ops.object.transform_apply(location=False,rotation=False,scale=True)
+        else:
+            for vertex in obj.data.vertices:vertex.co.y *= 2.0
 bpy.ops.object.select_all(action='SELECT')
-bpy.ops.export_scene.gltf(filepath=ROOT+'/public/assets/archive-cassette.glb',export_format='GLB',use_selection=True,use_active_scene=True,export_apply=True)
+export_path=Path(ROOT)/'art/.cache/archive-cassette.glb'
+export_path.parent.mkdir(parents=True,exist_ok=True)
+bpy.ops.export_scene.gltf(filepath=str(export_path),export_format='GLB',use_selection=True,use_active_scene=True,export_apply=True)
+os.replace(str(export_path),ROOT+'/public/assets/archive-cassette.glb')
 bpy.data.libraries.write(ROOT+'/art/rhine-archive.blend', {scene}, fake_user=True)
 print('Exported archive cassette:',len(scene.objects),'material groups')
 
