@@ -1,5 +1,8 @@
+import { normalizeQuality, qualityPresets, type QualityPreset, type RenderQuality } from "./render-quality";
+import { qualityMarkup, syncQualityUI } from "./quality-settings";
 import "@kitlangton/rolling-number/styles.css";
 import "./style.css";
+import "./quality-settings.css";
 import { createRollingNumber } from "@kitlangton/rolling-number";
 import { ArchiveScene } from "./scene";
 import { ModelViewer } from "./model-viewer";
@@ -105,11 +108,14 @@ function readLocal<T>(key: string, fallback: T): T {
   }
 }
 const saved = new Set<string>(readLocal<string[]>("rhine-saved", []));
-const prefs = readLocal("rhine-settings", {
+const storedPrefs = readLocal<Partial<{ sound: boolean; reduced: boolean; quality: boolean; rendering: RenderQuality }>>("rhine-settings", {});
+const prefs = {
   sound: false,
   reduced: matchMedia("(prefers-reduced-motion: reduce)").matches,
   quality: true,
-});
+  ...storedPrefs,
+  rendering: normalizeQuality(storedPrefs.rendering, storedPrefs.quality !== false),
+};
 const numberOptions = {
   locales: "en-US",
   format: { minimumIntegerDigits: 2, useGrouping: false },
@@ -152,7 +158,10 @@ function savePrefs() {
   audio.enabled = prefs.sound;
   if (prefs.reduced) selectionTitle.reset();
   scene?.setReduced(prefs.reduced);
-  scene?.setQuality(prefs.quality);
+  scene?.setQuality(prefs.rendering);
+  viewer?.setQuality(prefs.rendering);
+  syncQualityUI(prefs.rendering);
+  updateQualitySummary();
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
   columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
   selectedCode.update({ animated: !prefs.reduced && mode === "archive" });
@@ -165,6 +174,7 @@ function fit() {
   $("#viewport").style.setProperty("--scale", String(scale));
   scene?.resize();
   viewer?.resize();
+  updateQualitySummary();
 }
 window.addEventListener("resize", fit);
 fit();
@@ -363,6 +373,7 @@ function renderModal() {
   if (!modal) return;
   $("#modal-root").innerHTML =
     `<div class="modal-backdrop"><section class="terminal-modal ${modal === "settings" ? "settings-modal" : ""}" role="dialog" aria-modal="true" aria-label="${modal === "settings" ? "系统设置" : modal === "saved" ? "收藏档案" : "档案检索"}"><div class="modal-top"><span>RHINE LAB / ${modal === "settings" ? "SYSTEM PREFERENCES" : "ARCHIVE DIRECTORY"}</span><button data-action="close-modal" aria-label="关闭窗口">CLOSE <span>×</span></button></div>${modal === "settings" ? settingsMarkup() : `<h2>${modal === "saved" ? "SAVED ARCHIVES" : "ARCHIVE INDEX"}<small>${modal === "saved" ? "收藏档案" : "内部档案检索"}</small></h2><div class="search-field"><span>⌕</span><input id="archive-search" type="search" autocomplete="off" placeholder="输入档案编号、名称或科室" aria-label="检索档案"/><span class="key">ESC</span></div><div class="category-filters">${categories.map((c, i) => `<button data-filter="${c}" class="${i === 0 ? "active" : ""}">${c}</button>`).join("")}</div><div class="result-header"><span>FILE / 档案</span><span>DEPARTMENT / 科室</span><span>ACCESS</span></div><div id="search-results" class="search-results"></div><div class="modal-bottom"><span id="result-count"></span><span>INTERNAL DATABASE <i>●</i> CONNECTED</span></div>`}</section></div>`;
+  if (modal === "settings") updateQualitySummary();
   if (modal !== "settings") {
     renderResults();
     requestAnimationFrame(() => $("#archive-search").focus());
@@ -398,11 +409,24 @@ function renderResults() {
   $("#result-count").textContent =
     `${String(results.length).padStart(2, "0")} RECORDS FOUND`;
 }
+function updateQualitySummary() {
+  const summary = document.querySelector("#quality-summary");
+  if (!summary || !scene) return;
+  const canvas = scene.renderer.domElement;
+  const metrics = JSON.parse(canvas.parentElement?.dataset.renderQuality ?? "{}");
+  summary.textContent = `实际渲染 ${canvas.width} × ${canvas.height} · ${prefs.rendering.antialias === "smaa" ? "SMAA" : "原始抗锯齿"} · 纹理 ${metrics.anisotropy ?? 1}×${metrics.limited ? " · 已达到缓冲上限" : ""}`;
+}
 function settingsMarkup() {
-  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><label><div><strong>INTERFACE SOUND</strong><span>界面反馈音</span></div><input type="checkbox" data-pref="sound" ${prefs.sound ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>HIGH QUALITY RENDERING</strong><span>环境遮蔽与高分辨率渲染</span></div><input type="checkbox" data-pref="quality" ${prefs.quality ? "checked" : ""}/><i class="toggle"></i></label></div><div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="/fonts/MiSans-license.pdf" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
+  return `<h2>SYSTEM SETTINGS<small>终端偏好设置</small></h2><p class="settings-intro">JOYCE MOORE <span>·</span> SESSION AUTHORIZED</p><div class="settings-list"><label><div><strong>INTERFACE SOUND</strong><span>界面反馈音</span></div><input type="checkbox" data-pref="sound" ${prefs.sound ? "checked" : ""}/><i class="toggle"></i></label><label><div><strong>REDUCED MOTION</strong><span>减少镜头移动和过渡动效</span></div><input type="checkbox" data-pref="reduced" ${prefs.reduced ? "checked" : ""}/><i class="toggle"></i></label></div>${qualityMarkup(prefs.rendering)}<div class="settings-shortcuts"><span>KEYBOARD CONTROLS</span><p><kbd>←</kbd><kbd>→</kbd> 切列 <kbd>↑</kbd><kbd>↓</kbd> 选档 <kbd>ENTER</kbd> 读取 <kbd>/</kbd> 检索 <kbd>ESC</kbd> 返回</p></div><div class="settings-bottom"><button data-action="fullscreen">FULLSCREEN <span>↗</span></button><button data-action="restart">REINITIALIZE SYSTEM <span>↻</span></button></div><div class="modal-bottom"><span>ANALYSIS OS / 1.0 · 使用 MiSans 字体（小米） <a href="/fonts/MiSans-license.pdf" target="_blank" rel="noopener">字体许可</a></span><span>POWERED BY RHINE LAB</span></div>`;
 }
 
 document.addEventListener("input", (e) => {
+  const slider = e.target as HTMLInputElement;
+  if (slider.dataset.quality) {
+    const output = document.querySelector<HTMLOutputElement>(`[data-quality-output="${slider.dataset.quality}"]`);
+    if (output) output.value = `${slider.value}%`;
+  }
+
   if ((e.target as HTMLElement).id === "archive-search") {
     searchQuery = (e.target as HTMLInputElement).value;
     renderResults();
@@ -410,8 +434,17 @@ document.addEventListener("input", (e) => {
 });
 document.addEventListener("change", (e) => {
   const el = e.target as HTMLInputElement;
+  if (el.id === "quality-preset" && Object.hasOwn(qualityPresets, el.value)) {
+    prefs.rendering = { ...qualityPresets[el.value as QualityPreset] };
+    savePrefs();
+  } else if (el.dataset.quality) {
+    const key = el.dataset.quality as keyof RenderQuality;
+    prefs.rendering = normalizeQuality({ ...prefs.rendering, [key]: key === "antialias" ? el.value : Number(el.value) });
+    savePrefs();
+  }
   if (el.dataset.pref) {
-    prefs[el.dataset.pref as keyof typeof prefs] = el.checked;
+    const key = el.dataset.pref;
+    if (key === "sound" || key === "reduced" || key === "quality") prefs[key] = el.checked;
     savePrefs();
     audio.play("confirm");
   }
@@ -457,6 +490,7 @@ document.addEventListener("click", (e) => {
   if (action === "open") openFile();
   if (action === "model-viewer" && mode === "detail") {
     viewer ??= new ModelViewer($("#stage"), () => audio.play("back"));
+    viewer.setQuality(prefs.rendering);
     viewer.open(
       records[selected].id,
       records[selected].title,
@@ -510,11 +544,12 @@ document.addEventListener("keydown", (e) => {
   if (modal && e.key === "Tab") {
     const focusables = [
       ...$("#modal-root").querySelectorAll<HTMLElement>(
-        'button,input,[tabindex="0"]',
+        'button,input:not(:disabled),select:not(:disabled),summary,[tabindex="0"]',
       ),
     ];
-    const first = focusables[0],
-      last = focusables.at(-1);
+    const visible = focusables.filter(el => el.getClientRects().length > 0);
+    const first = visible[0],
+      last = visible.at(-1);
     if (e.shiftKey && document.activeElement === first) {
       e.preventDefault();
       last?.focus();

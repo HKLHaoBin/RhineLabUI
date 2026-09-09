@@ -6,6 +6,9 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { SSAOPass } from "three/addons/postprocessing/SSAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { BokehPass } from "three/addons/postprocessing/BokehPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { normalizeQuality, type RenderQuality } from "./render-quality";
+import { applyTextureQuality, resizeQuality } from "./quality-renderer";
 import { CardAppearance } from "./appearance";
 import { fileAtSlot, fileLocation } from "./data";
 import {
@@ -99,7 +102,10 @@ export class ArchiveScene {
   private labelTexture?: THREE.CanvasTexture;
   private labelMark = new Image();
   private reduced = false;
-  private highQuality = true;
+  private quality = normalizeQuality(undefined);
+  private appliedQuality = "";
+  private smaa = new SMAAPass();
+  private aoKernelSize = 32;
   onSelect?: (index: number, cell?: ArchiveCell) => void;
   onHover?: (index: number | null) => void;
   constructor(
@@ -174,6 +180,8 @@ export class ArchiveScene {
       maxblur: 0.011,
     });
     this.composer.addPass(this.bokeh);
+    this.smaa.enabled = false;
+    this.composer.addPass(this.smaa);
     this.composer.addPass(new OutputPass());
     this.bindPointer();
   }
@@ -447,10 +455,42 @@ export class ArchiveScene {
   setReduced(value: boolean) {
     this.reduced = value;
   }
-  setQuality(high: boolean) {
-    this.highQuality = high;
-    this.ao.enabled = high;
-    this.bokeh.enabled = high;
+  setQuality(value: RenderQuality | boolean) {
+    const quality =
+      typeof value === "boolean"
+        ? normalizeQuality(undefined, value)
+        : normalizeQuality(value);
+    const key = JSON.stringify(quality);
+    if (this.appliedQuality === key) return;
+    this.appliedQuality = key;
+    this.quality = quality;
+    if (quality.aoSamples && quality.aoSamples !== this.aoKernelSize) {
+      const old = this.ao;
+      this.ao = new SSAOPass(this.scene, this.camera, 1, 1, quality.aoSamples);
+      this.ao.kernelRadius = old.kernelRadius;
+      this.ao.minDistance = old.minDistance;
+      this.ao.maxDistance = old.maxDistance;
+      const index = this.composer.passes.indexOf(old);
+      this.composer.removePass(old);
+      this.composer.insertPass(this.ao, index);
+      old.dispose();
+      this.aoKernelSize = quality.aoSamples;
+    }
+    this.ao.enabled = quality.aoSamples > 0;
+    this.bokeh.enabled = quality.depthOfField > 0;
+    this.smaa.enabled = quality.antialias === "smaa";
+    this.renderer.shadowMap.enabled = quality.shadows > 0;
+    const size = Math.min(
+      quality.shadows || 1024,
+      this.renderer.capabilities.maxTextureSize,
+    );
+    if (this.light.shadow.mapSize.x !== size) {
+      this.light.shadow.map?.dispose();
+      this.light.shadow.map = null;
+      this.light.shadow.mapSize.set(size, size);
+    }
+    this.light.shadow.needsUpdate = true;
+    applyTextureQuality(this.scene, this.renderer, quality);
     this.resize();
   }
   private cellPosition(cell: ArchiveCell) {
@@ -586,13 +626,26 @@ export class ArchiveScene {
   resize() {
     const w = this.container.clientWidth,
       h = this.container.clientHeight;
-    this.renderer.setPixelRatio(
-      Math.min(devicePixelRatio, this.highQuality ? 1.5 : 1) *
-        Math.min(innerWidth / 1920, innerHeight / 1080),
+    const dimensions = resizeQuality(
+      this.renderer,
+      this.composer,
+      this.container,
+      this.quality,
     );
-    this.composer.setPixelRatio(this.renderer.getPixelRatio());
-    this.renderer.setSize(w, h);
-    this.composer.setSize(w, h);
+    this.ao.setSize(
+      Math.max(1, Math.floor(dimensions.width * this.quality.aoResolution)),
+      Math.max(1, Math.floor(dimensions.height * this.quality.aoResolution)),
+    );
+    this.container.dataset.renderQuality = JSON.stringify({
+      ...JSON.parse(this.container.dataset.renderQuality!),
+      aoSamples: this.ao.enabled ? this.aoKernelSize : 0,
+      aoWidth: this.ao.width,
+      aoHeight: this.ao.height,
+      shadows: this.renderer.shadowMap.enabled
+        ? this.light.shadow.mapSize.x
+        : 0,
+      depthOfField: this.bokeh.enabled ? this.quality.depthOfField : 0,
+    });
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   }
@@ -1127,7 +1180,10 @@ export class ArchiveScene {
       { value: number }
     >;
     bokehUniforms.focus.value = -focalPoint.z;
-    bokehUniforms.aperture.value = THREE.MathUtils.lerp(0.0003, 0.0008, detail);
+    bokehUniforms.aperture.value =
+      (THREE.MathUtils.lerp(0.0003, 0.0008, detail) *
+        this.quality.depthOfField) /
+      100;
     this.renderer.info.reset();
     this.composer.render();
   }
