@@ -13,7 +13,6 @@ import { CardAppearance } from "./appearance";
 import { configureInternalOptics } from "./internal-optics";
 import { DecryptionController } from "./decryption";
 import { fileAtSlot, fileLocation } from "./data";
-import { publicUrl } from "./public-url";
 import {
   cellKey,
   sameCell,
@@ -194,7 +193,7 @@ export class ArchiveScene {
     this.composer.addPass(new OutputPass());
     this.bindPointer();
   }
-  async load(assetUrl = publicUrl("assets/archive-cassette.glb")) {
+  async load(assetUrl = "/assets/archive-cassette.glb") {
     this.labelMark.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(labelMarkSvg)}`;
     await this.labelMark.decode();
     const gltf = await new GLTFLoader().loadAsync(assetUrl);
@@ -356,7 +355,7 @@ export class ArchiveScene {
   private assemblyTemplate?: Promise<THREE.Group>;
   async createAssemblyModel() {
     this.assemblyTemplate ??= new GLTFLoader()
-      .loadAsync(publicUrl("assets/archive-assembly.glb"))
+      .loadAsync("/assets/archive-assembly.glb")
       .then((gltf) => {
         gltf.scene.updateMatrixWorld(true);
         return gltf.scene;
