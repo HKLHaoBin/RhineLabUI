@@ -47,7 +47,7 @@ $("#stage").innerHTML = `
   <div id="inspection-text" aria-hidden="true">CONFIDENTIALITY:<strong>GENERAL BUSINESS USE</strong></div>
   <section id="archive-ui" class="archive-ui" aria-label="档案选择">
     <div class="archive-callout"><div class="eyebrow">INTERNAL DATABASE <span>／</span> <span id="archive-category">机构档案</span></div><button class="file-title" data-action="open">FILE NUMBER: <span id="selected-id">X-<span id="selected-code">001</span></span><span class="file-open">↗</span></button><div class="callout-rule"><i></i></div><div class="file-summary"><span id="selected-title">莱茵生命</span><span id="selected-clearance">BUSINESS AREA</span></div><button class="read-file" data-action="open">ACCESS FILE <span>→</span></button></div>
-    <div id="hover-label" class="hover-label" hidden>X-<span id="hover-code">001</span><span id="hover-title"></span></div>
+    <div id="hover-label" class="hover-label" hidden>X-<span id="hover-code">001</span> / <span id="hover-title"></span></div>
     <div class="archive-counter"><span class="tiny-label">ARCHIVE / SELECT</span><div><span id="selected-number">01</span><i>/</i><span class="count-total">12</span></div></div>
     <div class="archive-navigation"><button data-action="prev" aria-label="上一个档案">↑</button><div id="file-ticks" class="file-ticks"></div><button data-action="next" aria-label="下一个档案">↓</button></div>
     <div class="column-navigation"><button data-action="column-prev" aria-label="上一列">←</button><div><span id="column-number">COLUMN <span id="column-index">03</span> / 05</span><strong id="column-name">机构档案</strong></div><button data-action="column-next" aria-label="下一列">→</button></div>
@@ -151,12 +151,29 @@ const codeOptions = {
   format: { minimumIntegerDigits: 3, useGrouping: false },
   value: 1,
 };
-const selectionTitle = createRollingText($("#selected-title"), {
+const textOptions = {
   ...rollingMotion,
+  transition: "direct" as const,
+  stagger: "none" as const,
+};
+const selectionTitle = createRollingText($("#selected-title"), {
+  ...textOptions,
   text: $("#selected-title").textContent ?? "",
-  transition: "direct",
-  stagger: "none",
 });
+const columnTitle = createRollingText($("#column-name"), {
+  ...textOptions,
+  text: $("#column-name").textContent ?? "",
+});
+const hoverTitle = createRollingText($("#hover-title"), { ...textOptions, text: "" });
+const categoryTitle = createRollingText($("#archive-category"), {
+  ...textOptions,
+  text: $("#archive-category").textContent ?? "",
+});
+const clearanceTitle = createRollingText($("#selected-clearance"), {
+  ...textOptions,
+  text: $("#selected-clearance").textContent ?? "",
+});
+const rollingTitles = [selectionTitle, columnTitle, hoverTitle, categoryTitle, clearanceTitle];
 const selectedCode = createRollingNumber($("#selected-code"), codeOptions);
 const hoverCode = createRollingNumber($("#hover-code"), codeOptions);
 const audio = new TerminalAudio();
@@ -181,7 +198,7 @@ function saveAudioPrefs() {
 function savePrefs() {
   saveAudioPrefs();
   if (prefs.reduced) {
-    selectionTitle.finish();
+    rollingTitles.forEach(title => title.finish());
     detailTransition.finish();
     modalTransition?.finish();
     tabTransition.cancel();
@@ -193,7 +210,7 @@ function savePrefs() {
   syncQualityUI(prefs.rendering);
   updateQualitySummary();
   fileCounter.update({ animated: !prefs.reduced && mode === "archive" });
-  selectionTitle.update({ animated: !prefs.reduced && mode === "archive" });
+  rollingTitles.forEach(title => title.update({ animated: !prefs.reduced && mode === "archive" }));
   columnCounter.update({ animated: !prefs.reduced && mode === "archive" });
   selectedCode.update({ animated: !prefs.reduced && mode === "archive" });
   hoverCode.update({ animated: !prefs.reduced && mode === "archive" });
@@ -209,17 +226,21 @@ function fit() {
 }
 window.addEventListener("resize", fit);
 fit();
-$("#file-ticks").innerHTML = records
+$("#file-ticks").innerHTML = columnFiles(fileLocation(selected).lane)
   .map(
-    (r, i) =>
-      `<button data-select="${i}" aria-label="选择档案 ${r.id} ${escapeHtml(r.title)}" title="${r.id} · ${escapeHtml(r.title)}"></button>`,
+    (index) => `<button data-select="${index}"></button>`,
   )
   .join("");
+const fileTicks = [...$("#file-ticks").querySelectorAll<HTMLButtonElement>("button")];
 
 function setMode(next: Mode) {
   const previousMode = mode;
-  selectionTitle.update({ animated: !prefs.reduced && next === "archive" });
-  if (next !== "archive") selectionTitle.finish();
+  rollingTitles.forEach(title => title.update({ animated: !prefs.reduced && next === "archive" }));
+  if (next !== "archive") {
+    rollingTitles.forEach(title => title.finish());
+    hoverCode.finish();
+    $("#hover-label").hidden = true;
+  }
   if (next === "detail" && mode !== "detail") recordAccess();
   mode = next;
   audio.setScene(next);
@@ -284,8 +305,8 @@ function updateSelection(navigation?: ArchiveNavigation) {
   const { lane } = fileLocation(selected);
   const files = columnFiles(lane);
   selectionTitle.update({ text: r.title, animated: !prefs.reduced && mode === "archive" });
-  $("#selected-clearance").textContent = r.clearance;
-  $("#archive-category").textContent = r.category;
+  clearanceTitle.update({ text: r.clearance, animated: !prefs.reduced && mode === "archive" });
+  categoryTitle.update({ text: r.category, animated: !prefs.reduced && mode === "archive" });
   const direction =
     navigation && "axis" in navigation
       ? navigation.direction > 0
@@ -314,21 +335,16 @@ function updateSelection(navigation?: ArchiveNavigation) {
         ? direction
         : "auto",
   });
-  $("#column-name").textContent = archiveColumns[lane];
+  columnTitle.update({ text: archiveColumns[lane], animated: !prefs.reduced && mode === "archive" });
   $<HTMLButtonElement>('[data-action="column-prev"]').disabled = false;
   $<HTMLButtonElement>('[data-action="column-next"]').disabled = false;
-  document.querySelectorAll("[data-select]").forEach((b) => {
-    (b as HTMLElement).hidden = !files.includes(
-      Number((b as HTMLElement).dataset.select),
-    );
-    b.classList.toggle(
-      "selected",
-      Number((b as HTMLElement).dataset.select) === selected,
-    );
-    b.setAttribute(
-      "aria-pressed",
-      String(Number((b as HTMLElement).dataset.select) === selected),
-    );
+  fileTicks.forEach((button, slot) => {
+    const index = files[slot], record = records[index];
+    button.dataset.select = String(index);
+    button.setAttribute("aria-label", `选择档案 ${record.id} ${record.title}`);
+    button.title = `${record.id} · ${record.title}`;
+    button.classList.toggle("selected", index === selected);
+    button.setAttribute("aria-pressed", String(index === selected));
   });
   $("#saved-count").textContent = String(saved.size).padStart(2, "0");
 }
@@ -868,14 +884,20 @@ async function start() {
       const label = $("#hover-label");
       if (i === null) {
         label.hidden = true;
+        hoverCode.finish();
+        hoverTitle.finish();
         return;
       }
+      const animated = !prefs.reduced && mode === "archive";
       hoverCode.update({
         value: Number(records[i].id.slice(2)),
-        animated: !label.hidden && !prefs.reduced && mode === "archive",
+        animated: !label.hidden && animated,
       });
-      $("#hover-title").textContent = " / " + records[i].title;
+      hoverTitle.update({ text: records[i].title, animated: !label.hidden && animated });
       label.hidden = false;
+      // Prepare the first visible value so the next hover can animate immediately.
+      hoverCode.update({ animated });
+      hoverTitle.update({ animated });
     };
     savePrefs();
     ready = true;

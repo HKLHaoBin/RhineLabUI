@@ -437,7 +437,7 @@ button {
   opacity: 0;
   transition: opacity 0.7s;
 }
-.eyebrow span {
+.eyebrow > span {
   margin-left: 16px;
 }
 .file-title {
@@ -589,7 +589,7 @@ button {
   gap: 7px;
   min-width: 140px;
 }
-.column-navigation span {
+.column-navigation > div > span {
   font-size: 10px;
   letter-spacing: 1.2px;
   color: #726f67;
@@ -604,9 +604,6 @@ button {
   font-variant-numeric: tabular-nums;
   --rn-blur: 0.35;
   --rn-edge-fade: 0.08em;
-}
-.file-ticks button[hidden] {
-  display: none;
 }
 .file-ticks {
   display: flex;
@@ -2025,7 +2022,11 @@ button {
 }
 
 /* Use the same rolling engine as archive numbers, with quieter text blur. */
-#selected-title {
+#selected-title,
+#column-name,
+#hover-title,
+#archive-category,
+#selected-clearance {
   flex: none;
   --rn-blur: 0.2;
   --rn-edge-fade: 0.08em;
