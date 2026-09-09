@@ -858,7 +858,8 @@ button {
 .tab-panel {
   height: 189px;
   padding-top: 22px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: #bbb4a6 transparent;
 }

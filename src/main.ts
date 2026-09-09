@@ -1,4 +1,6 @@
 import { InspectionOverlay } from "./inspection-overlay";
+import { DocumentDecryption } from "./document-decryption";
+import "./document-decryption.css";
 import "./decryption.css";
 import { escapeHtml } from "./html";
 import { normalizeQuality, qualityPresets, type QualityPreset, type RenderQuality } from "./render-quality";
@@ -408,6 +410,7 @@ function renderDetail() {
   <div class="detail-footnote"><a href="${escapeHtml(r.source)}" target="_blank" rel="noopener">设定参考 ↗</a><span>${String(selected + 1).padStart(3, "0")} / ${String(records.length).padStart(3, "0")}</span></div>`;
   $("#detail-content").setAttribute("tabindex", "-1");
   $('[data-action="bookmark"]').setAttribute("aria-pressed", String(saved.has(r.id)));
+  documentDecryption.reset($("#detail-content"), prefs.reduced || scene.decryptionFrame.phase === "clear");
   setTab(activeTab, false);
 }
 function overview() {
@@ -444,6 +447,7 @@ function setTab(tab: string, sound = true) {
               "",
             )}<p class="log-note">本次会话已通过身份验证。档案内容以当前终端可访问范围展示。</p>`;
   $("#tab-panel").scrollTop = 0;
+  documentDecryption.refresh();
   if (sound) {
     tabTransition.reveal($("#tab-panel"), prefs.reduced);
     audio.play("ui-tick");
@@ -799,6 +803,7 @@ function bootFrame(t: number) {
 }
 
 const inspectionOverlay = new InspectionOverlay();
+const documentDecryption = new DocumentDecryption();
 
 let lastTime = 0,
   frameCount = 0,
@@ -813,6 +818,7 @@ function frame(ms: number) {
   if (!viewer?.isOpen) scene?.update(time, cinema);
   viewer?.update(time);
   if (scene && mode === "detail") {
+    documentDecryption.update(time, scene.decryptionFrame, prefs.reduced);
     $("#detail-content").style.opacity = String(scene.detailVisibility);
     $("#detail-content").style.transform =
       `translateY(${(1 - scene.detailVisibility) * 18}px)`;
